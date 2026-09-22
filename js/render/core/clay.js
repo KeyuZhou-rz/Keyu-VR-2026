@@ -10,6 +10,8 @@ import { EditText } from "./editText.js";
 import { CodeEditor } from "./codeEditor.js";
 import * as keyboardInput from "../../util/input_keyboard.js";
 import { G2 } from "../../util/g2.js";
+import { linefont } from "./linefont.js";
+
 import { videoHandTracker } from "./videoHandTracker.js";
 import { ClientStateSharing } from "./clientStateSharing.js";
 import * as glUtil from "./gl_util.js"
@@ -152,6 +154,70 @@ export function Clay(gl, canvas) {
          if (data[k].id == id)
 	    return data[k].orient;
       return null;
+   }
+
+   this.definePathsMesh = (name, width, paths) => {
+      let add = cg.add, sub = cg.subtract, vertices = [];
+      let addVertex = pos => vertices.push(vertexArray(pos));
+      for (let n = 0 ; n < paths.length ; n++) {
+         let path = paths[n];
+         for (let i = 0 ; i < path.length-1 ; i++) {
+            let b = path[i  ];
+            let c = path[i+1];
+            let a = i > 0 ? path[i-1] : add(b,sub(b,c));
+            let da = cg.normalize(sub(b,a));
+            let dc = cg.normalize(sub(c,b));
+            let db = cg.normalize(add(da,dc));
+            let s = cg.dot(da, db);
+            da = cg.scale(da,width/2);
+            dc = cg.scale(dc,width/2);
+            db = cg.scale(db,width/2);
+            let ea = [da[1]  ,-da[0]  ,0];
+            let ec = [dc[1]  ,-dc[0]  ,0];
+            let eb = [db[1]/s,-db[0]/s,0];
+            if (i == 0)
+               b = sub(b,da);
+            if (cg.dot(da,dc) < 0) {
+               if (n > 0 && i == 0)
+                  addVertex(sub(b,ea));
+               addVertex(sub(b,ea));
+               addVertex(add(b,ea));
+               addVertex(sub(b,ec));
+               addVertex(add(b,ec));
+            }
+            else {
+               if (n > 0 && i == 0)
+                  addVertex(sub(b,eb));
+               addVertex(sub(b,eb));
+               addVertex(add(b,eb));
+            }
+            if (i == path.length-2) {
+               addVertex(sub(add(c,dc),ec));
+               addVertex(add(add(c,dc),ec));
+            }
+            if (n < paths.length-1 && i == path.length-2)
+               addVertex(add(add(c,dc),ec));
+         }
+      }
+      this.defineMesh(name, new Float32Array(vertices.flat()));
+   }
+
+   this.defineTextMesh = (name, text) => {
+      let myPaths = [], lines = text.split('\n'), c;
+      for (let row = 0 ; row < lines.length ; row++)
+      for (let col = 0 ; col < lines[row].length ; col++)
+         if ((c = lines[row].charCodeAt(col) & 127) > 32) {
+            let x = .019*col, y = .0375*row;
+            let paths = linefont[c - 32].paths;
+            for (let i = 0 ; i < paths.length ; i++) {
+               let myPath = [], path = paths[i];
+               for (let j = 0 ; j < path.length ; j++)
+                  myPath.push([ x + path[j][0] / 4000,
+                               -y - path[j][1] / 4000, 0]);
+               myPaths.push(myPath);
+            }
+         }
+      return this.definePathsMesh(name, .0035, myPaths);
    }
 
    this.defineDataMesh = (name, data, defaults) => {
