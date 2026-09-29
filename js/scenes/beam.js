@@ -7,7 +7,7 @@ import { ControllerBeam } from "../render/core/controllerInput.js";
 
 export const init = async model => {
    const inch = .0254, y = 1;
-   let rect = model.add('square').move(0,y,0).scale(.1,.1,1);
+   let rect = model.add('square').move(0,1.5,0).scale(.2,.1,1);
    let beamL = new ControllerBeam(model, 'left');
    let beamR = new ControllerBeam(model, 'right');
 

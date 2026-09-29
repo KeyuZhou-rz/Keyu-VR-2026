@@ -32,7 +32,7 @@ export const init = async model => {
    // AT EVERY ANIMATION FRAME, PLACE AND ROTATE OBJECTS.
 
    model.move(0,1.8,0).scale(.4).animate(() => {
-      for (let n = 0 ; n < shapes.length ; n++) {
+      for (let n = 0 ; n < shapes.length ; n++) {x
          let row = n / 6 >> 0;
          let col = n % 6;
          model.child(n).identity().move(col - 2.5, row - 2.5, 0)

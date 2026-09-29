@@ -30,7 +30,7 @@ export const init = async model => {
         let matrix = beamR.beamMatrix();
         let origin = matrix.slice(12, 15);
 
-        saber.identity().move(origin).scale(0.02, 0.02, 0.8).color(1, 0.1, 0.1);
+        saber.identity().setMatrix(matrix).move(origin).scale(0.02, 0.02, 0.8).color(1, 0.1, 0.1);
         // cube coming along
         if (cubeTar && cubeTar.isAlive){
             cubeTar.z += 0.015;
