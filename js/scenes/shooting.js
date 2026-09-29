@@ -1,4 +1,5 @@
-import { ControllerBeam } from "../render/core/controllerInput.js";
+import * as cg from "../render/core/cg.js";
+import { ControllerBeam, buttonState } from "../render/core/controllerInput.js";
 import { vs, fs } from "./penger.js";
 
 function wobble(vertex, time) {
@@ -19,13 +20,64 @@ export const init = async model => {
         ENDED: 2
         
     });
-
+    const lasers = [];
+    const laserLength = 0.25;
+    const laserSpeed = 8;
+    const shotInterval = 0.12;
+    let nextShotTime = 0;
+    let prev_frame_time = 0;
     let phase = STATUS.PLAYING;
     let hit_count = 0;
     let start_time = 0.0;
     const time_limit = 20;
     
     let beamL = new ControllerBeam(model, 'left');
+
+    const fire = () => {
+        const matrix = beamL.beamMatrix();
+        const start = matrix.slice(12, 15);
+        const dir = cg.normalize([-matrix[8], -matrix[9], -matrix[10]]);
+        const mesh = model.add('tubeZ').color(1, 0.1, 0.1).dull(1);
+        lasers.push({ start, dir, age: 0, mesh });
+    };
+
+    const clearLasers = () => {
+        for (const laser of lasers) model.remove(laser.mesh);
+        lasers.length = 0;
+    };
+
+    const updateLasers = dt => {
+        let hit = false;
+        for (let i = lasers.length - 1; i >= 0; --i) {
+            const laser = lasers[i];
+            const previousTravel = laserSpeed * laser.age;
+            laser.age += dt;
+            const travel = laserSpeed * laser.age;
+            const pointAt = distance => laser.start.map((value, axis) => value + laser.dir[axis] * distance);
+            const tail = pointAt(travel);
+            const head = pointAt(travel + laserLength);
+            let laserHit = false;
+
+            if (target && target.isAlive && !hit) {
+                const center = target.mesh.getGlobalMatrix().slice(12, 15);
+                const sweepStart = pointAt(previousTravel);
+                const sweep = cg.subtract(head, sweepStart);
+                const offset = cg.subtract(center, sweepStart);
+                const t = Math.max(0, Math.min(1, cg.dot(offset, sweep) / cg.dot(sweep, sweep)));
+                const closest = cg.add(sweepStart, cg.scale(sweep, t));
+                laserHit = cg.distance(closest, center) < 0.18;
+                hit = laserHit;
+            }
+
+            if (laserHit || travel > 10) {
+                model.remove(laser.mesh);
+                lasers.splice(i, 1);
+            } else {
+                laser.mesh.identity().link(tail, head, 0.008);
+            }
+        }
+        return hit;
+    };
 
     const edges = [];
     const edgeKeys = new Set();
@@ -84,10 +136,14 @@ export const init = async model => {
     };
 
 
+
     const resetGame = () => {
         // initialize hit_count start time uiRectscale, and if exist, clean it
         hit_count = 0;
         start_time = 0;
+        prev_frame_time = 0;
+        nextShotTime = 0;
+        clearLasers();
         uiRect.scale(0);
 
         if (target && target.mesh) {
@@ -103,11 +159,21 @@ export const init = async model => {
         beamL.update();
 
         if (phase === STATUS.PLAYING) {
+            beamL.beam.child(0).scale(0);
+            const now = Date.now() / 1000;
             if (start_time === 0) {
-                start_time = Date.now() / 1000;
+                start_time = now;
             }
-            let time_now = Date.now() / 1000 - start_time;
+            const dt = prev_frame_time === 0 ? 0 : now - prev_frame_time;
+            prev_frame_time = now;
+            let time_now = now - start_time;
             let time_remaining = Math.max(0, time_limit - time_now);
+
+            if (buttonState.left[0].pressed && now >= nextShotTime) {
+                fire();
+                nextShotTime = now + shotInterval;
+            }
+            if (!buttonState.left[0].pressed) nextShotTime = 0;
 
             clay.defineTextMesh('myText', `TIME: ${time_remaining.toFixed(1)}s\nHITS: ${hit_count}`);
             timeText.identity().move(-0.5, 1.5, 0);
@@ -115,6 +181,7 @@ export const init = async model => {
             if (time_now >= time_limit) {
                 phase = STATUS.FAILED;
                 if (target) target.mesh.scale(0);
+                clearLasers();
                 return;
             }
 
@@ -142,18 +209,16 @@ export const init = async model => {
                     }, 500);
                 }
 
-                let uvdl = beamL.hitRect(target.mesh.getGlobalMatrix());
-                if (uvdl) {
+                if (updateLasers(dt)) {
                     hit_count += 1;
-                    let u = uvdl[0], v = uvdl[1];
-                    let isHit = (u * u < 0.01) && (v * v < 0.01);
-                    if (typeof vibrate === 'function') vibrate('left', isHit ? 1 : 0.3);
+                    if (typeof vibrate === 'function') vibrate('left', 1);
 
                     target.mesh.scale(0);
                     target.isAlive = false;
 
                     if (hit_count >= 15) {
                         phase = STATUS.ENDED;
+                        clearLasers();
                         return;
                     }
 
@@ -161,6 +226,8 @@ export const init = async model => {
                         target = spawnPenguin();
                     }, 500);
                 }
+            } else {
+                updateLasers(dt);
             }
 
         } else if (phase === STATUS.ENDED || phase === STATUS.FAILED) {
