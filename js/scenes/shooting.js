@@ -36,7 +36,7 @@ export const init = async model => {
     const fire = () => {
         const matrix = beamL.beamMatrix();
         const start = matrix.slice(12, 15);
-        const dir = cg.normalize([-matrix[8], -matrix[9], -matrix[10]]);
+        const dir = normalize([-matrix[8], -matrix[9], -matrix[10]]);
         const mesh = model.add('tubeZ').color(1, 0.1, 0.1).dull(1);
         lasers.push({ start, dir, age: 0, mesh });
     };
