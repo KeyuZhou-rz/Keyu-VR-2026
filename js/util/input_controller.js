@@ -48,12 +48,14 @@ export class InputController {
         let invOrient = quat.create();
         quat.rotateX(invOrient, invOrient, -this.lookPitch);
         quat.rotateY(invOrient, invOrient, -this.lookYaw);
+        // Positions list x, y and z: the Immersive Web Emulator turns
+        // missing coordinates into NaN instead of 0.
         let xform = new XRRigidTransform(
-          {},
+          { x: 0, y: 0, z: 0 },
           { x: invOrient[0], y: invOrient[1], z: invOrient[2], w: invOrient[3] }
         );
         this.refSpace = this.baseRefSpace.getOffsetReferenceSpace(xform);
-        xform = new XRRigidTransform({ y: -this.viewerHeight });
+        xform = new XRRigidTransform({ x: 0, y: -this.viewerHeight, z: 0 });
         this.refSpace = this.refSpace.getOffsetReferenceSpace(xform);
         xform = new XRRigidTransform({x: this.walkPosition[0], y: this.walkPosition[1], z: this.walkPosition[2], w: 1});
         this.refSpace = this.refSpace.getOffsetReferenceSpace(xform);

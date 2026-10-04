@@ -285,6 +285,10 @@ async function loadScene(info) {
 
 const rootPath = "./scenes/";
 export async function scenesSetup() {
+   // Only once. Running it again for each XR session duplicated the scene
+   // list and rebuilt the header, which left the Enter XR button dead.
+   if (scenesInit)
+      return;
    return import("./scenes/scenes.js").then((userInitNamespace) => {
       publicScenes =[] 
       let params = null;      
