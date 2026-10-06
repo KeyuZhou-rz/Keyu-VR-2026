@@ -1,5 +1,11 @@
+import * as cg from "../render/core/cg.js";
 import { ControllerBeam } from "../render/core/controllerInput.js";
 import { vs, fs } from "./penger.js";
+import { createSoundSource, playSound, updatePosition, stopSound, resumeAudio }
+    from "../util/spatial-audio.js";
+
+const SOUND = { POINT: 20, STEP: 21, ARRIVE: 22 };
+const stepInterval = Math.PI / 2.2;
 
 function wobble(vertex, time) {
     const angle = 0.35 * Math.sin(time * 2.2);
@@ -22,6 +28,13 @@ export const init = async model => {
     let nextPoint = 0;
     const speed = 0.3;
     let prev_frame_time = 0;
+    let nextStepTime = 0;
+
+    const playAt = (sound, position) => {
+        // Shared scene coordinates must be converted to this headset's XR coordinates.
+        updatePosition(sound, cg.mTransform(model.getGlobalMatrix(), position));
+        playSound(sound);
+    };
 
     const spawnFloor = () => {
     const groundY = 0;
@@ -94,6 +107,10 @@ export const init = async model => {
 
     }
 
+    inputEvents.onPress = hand => {
+        if (hand === 'right') resumeAudio();
+    };
+
     inputEvents.onClick = hand => {
         if (hand !== 'right') return;
         beamR.update();
@@ -110,10 +127,13 @@ export const init = async model => {
                 .color(1, 0.5, 0)
                 .scale(0.01);
             markers.push(marker);
+            playAt(SOUND.POINT, [point.x, point.y, point.z]);
         }
     };
 
     const finishPoint = () => {
+        const point = penguinState.coords[nextPoint];
+        playAt(SOUND.ARRIVE, [point.x, point.y, point.z]);
         model.remove(markers[nextPoint]);
         markers[nextPoint] = null;
         nextPoint++;
@@ -170,6 +190,15 @@ export const init = async model => {
 
 
     let penguin = spawnPenguin();
+    await Promise.all([
+        createSoundSource(SOUND.POINT,
+            './media/sound/SFXs/demoBalls/SFX_Ball_Create_Mono_01.wav', [0, 0, -1.5], false, 0.4),
+        createSoundSource(SOUND.STEP,
+            './media/sound/bounce/0.wav', [0, 0, -1.5], false, 0.3),
+        createSoundSource(SOUND.ARRIVE,
+            './media/sound/SFXs/demoBalls/SFX_Ball_Delete_Mono_01.wav', [0, 0, -1.5], false, 0.4)
+    ]);
+
     model.animate(()=>{
         server.sync('penguinState', msgs => {
             if (!isMasterClient()) return;
@@ -186,6 +215,22 @@ export const init = async model => {
         prev_frame_time = now;
         const moving = moveAlongPath(dt);
         renderPenguin(moving);
+
+        updatePosition(SOUND.STEP, penguin.mesh.getGlobalMatrix().slice(12, 15));
+        if (moving) {
+            if (penguin.walkTime >= nextStepTime) {
+                playSound(SOUND.STEP);
+                nextStepTime = penguin.walkTime + stepInterval;
+            }
+        } else {
+            nextStepTime = penguin.walkTime;
+            stopSound(SOUND.STEP);
+        }
     })
 
 }
+
+export const deinit = () => {
+    for (const sound of Object.values(SOUND)) stopSound(sound);
+};
+
