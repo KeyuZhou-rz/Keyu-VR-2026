@@ -1,5 +1,4 @@
-import * as cg from "../render/core/cg.js";
-import { ControllerBeam, buttonState } from "../render/core/controllerInput.js";
+import { ControllerBeam } from "../render/core/controllerInput.js";
 import { vs, fs } from "./penger.js";
 
 function wobble(vertex, time) {
@@ -13,10 +12,14 @@ function wobble(vertex, time) {
     };
 }
 
+// Only waypoint coordinates are shared. Each client keeps its own movement progress.
+server.init('penguinState', { coords: [] });
+
 export const init = async model => {
     let beamR = new ControllerBeam(model, 'right');
     // spawn the floor in the very beginning
-    const coords = [];
+    const markers = [];
+    let nextPoint = 0;
     const speed = 0.3;
     let prev_frame_time = 0;
 
@@ -92,24 +95,40 @@ export const init = async model => {
     }
 
     inputEvents.onClick = hand => {
-    let hit = beamR.hitPoint(ground.getGlobalMatrix());
-    if(hit){
-        const marker = model.add('sphere').move(hit[0], hit[1], hit[2]).color(1, 0.5, 0).scale(0.01);
-        coords.push({x:hit[0], y:hit[1], z:hit[2], marker:marker});
+        if (hand !== 'right') return;
+        beamR.update();
+        const hit = beamR.hitPoint(ground.getGlobalMatrix());
+        if (hit)
+            server.send('penguinState', { x: hit[0], y: hit[1], z: hit[2] });
+    };
+
+    const updateMarkers = () => {
+        while (markers.length < penguinState.coords.length) {
+            const point = penguinState.coords[markers.length];
+            const marker = model.add('sphere')
+                .move(point.x, point.y, point.z)
+                .color(1, 0.5, 0)
+                .scale(0.01);
+            markers.push(marker);
         }
-    }
+    };
+
+    const finishPoint = () => {
+        model.remove(markers[nextPoint]);
+        markers[nextPoint] = null;
+        nextPoint++;
+    };
 
     const moveAlongPath = dt => {
-        if (!coords.length) return false;
+        if (nextPoint >= penguinState.coords.length) return false;
 
-        const target = coords[0];
+        const target = penguinState.coords[nextPoint];
         const dx = target.x - penguin.x;
         const dz = target.z - penguin.z;
         const distance = Math.hypot(dx, dz);
 
         if (distance === 0) {
-            model.remove(target.marker);
-            coords.shift();
+            finishPoint();
             return false;
         }
 
@@ -120,13 +139,11 @@ export const init = async model => {
         if (step === distance) {
             penguin.x = target.x;
             penguin.z = target.z;
-            model.remove(target.marker)
-            coords.shift();
+            finishPoint();
         } else {
             penguin.x += dx / distance * step;
             penguin.z += dz / distance * step;
         }
-
         return true;
     };
 
@@ -152,11 +169,18 @@ export const init = async model => {
     };
 
 
-
-
     let penguin = spawnPenguin();
     model.animate(()=>{
+        server.sync('penguinState', msgs => {
+            if (!isMasterClient()) return;
+            for (const id in msgs)
+                penguinState.coords.push(msgs[id]);
+            server.broadcastGlobal('penguinState');
+        });
+
         beamR.update();
+        updateMarkers();
+
         const now = Date.now() / 1000;
         const dt = prev_frame_time === 0 ? 0 : now - prev_frame_time;
         prev_frame_time = now;
