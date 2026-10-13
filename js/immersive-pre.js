@@ -332,11 +332,13 @@ export function initXR() {
     xrButton = new WebXRButton({
         onRequestSession: onRequestSession,
         onEndSession: onEndSession,
+        textEnterXRTitle: 'ENTER VR',
+        textXRNotFoundTitle: 'VR NOT FOUND',
     });
     global.setXREntry(xrButton);
     let pending = null;
     if (navigator.xr) {
-        pending = navigator.xr.isSessionSupported("immersive-ar").then((supported) => {
+        pending = navigator.xr.isSessionSupported("immersive-vr").then((supported) => {
             console.log("immersive-vr supported:[" + supported + "]");
             xrButton.enabled = supported;
             window.vr = supported;
@@ -583,9 +585,9 @@ function onRequestSession() {
         return xrSession.end().then(onRequestSession);
     }
     return navigator.xr
-        .requestSession("immersive-ar", {
+        .requestSession("immersive-vr", {
             requiredFeatures: ["local-floor"],
-            optionalFeatures: ["hand-tracking", "layers", "mesh-detection", "depth-sensing", "shared"],
+            optionalFeatures: ["hand-tracking", "layers", "bounded-floor"],
         })
         .then((session) => {
 	    isXRMode = true;
@@ -598,6 +600,7 @@ function onRequestSession() {
 
 window.xrRefSpace = null;
 let xrSession = null;
+export const getXRInputSources = () => isXRMode ? xrSession?.inputSources || [] : [];
 
 let xrGLFactory = null;
 
