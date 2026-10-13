@@ -1,10 +1,12 @@
 import * as cg from '../render/core/cg.js';
-import { joyStickState } from '../render/core/controllerInput.js';
+import { joyStickState, buttonState } from '../render/core/controllerInput.js';
 import { createRoomPlanner } from '../util/roomPlanner.js';
+import { keyWentDown, KEY_E, KEY_R } from '../util/input_keyboard.js';
 
 export const init = async (model, ctx, ctxForever = {}) => {
    ctxForever.disposeBackrooms?.();
-   const planner = createRoomPlanner([[1, 2], [0, 3], [0, 3], [1, 2]]);
+   const connections = [[1, 2], [0, 3], [0, 3], [1, 2]];
+   let planner = createRoomPlanner(connections);
    ctxForever.disposeBackrooms = () => planner.dispose();
    const world = model.add();
    const rooms = [[0, 0], [14, 0], [0, -14], [14, -14]];
@@ -42,6 +44,20 @@ export const init = async (model, ctx, ctxForever = {}) => {
    for (const [x, z] of areas)
       box(world, x, 3.12, z, .65, .06, 1.4, [1, .98, .83]);
 
+   const exit = { x: -3.78, z: 0 }, powerSwitch = { x: 0, z: -17.78 };
+   const door = world.add().move(exit.x, 0, exit.z).turnY(Math.PI / 2);
+   for (const side of [-1, 1]) box(door, side * .91, 1.25, 0, .12, 2.5, .18, [.2, .22, .19]);
+   box(door, 0, 2.5, 0, 1.94, .12, .18, [.2, .22, .19]);
+   const hinge = door.add().move(-.85, 0, 0);
+   box(hinge, .85, 1.18, .02, 1.7, 2.35, .1, [.2, .25, .22]);
+   box(hinge, 1.5, 1.15, .12, .08, .25, .08, [.7, .7, .6]);
+   const doorLight = box(door, 0, 2.7, .08, .2, .12, .1, [.8, .1, .05]);
+   const doorLabel = door.add('label').info('EXIT / OFFLINE').move(0, 2.94, .1).scale(.035).dull();
+   const switchPanel = world.add().move(powerSwitch.x, 0, powerSwitch.z);
+   box(switchPanel, 0, 1.4, 0, .7, .9, .16, [.17, .2, .18]);
+   const switchLever = box(switchPanel, 0, 1.35, .14, .2, .3, .12, [.8, .1, .05]);
+   switchPanel.add('label').info('POWER').move(0, 2, .15).scale(.035).dull();
+
    const monster = world.add();
    const dark = [.045, .05, .04];
    box(monster, 0, 1.3, 0, .5, 1, .3, dark);
@@ -63,6 +79,60 @@ export const init = async (model, ctx, ctxForever = {}) => {
    let playerRoom = 0, nextRoom = null;
    let lastApplied = 'none';
    let seekerLine = '(Awaiting an applied DeepSeek decision.)';
+   let powered = false, result = null, elapsed = 0, triggerWasDown = false;
+
+   function finish(outcome) {
+      result = outcome;
+      route = [];
+      planner.dispose();
+      if (outcome === 'won') hinge.identity().move(-.85, 0, 0).turnY(-Math.PI / 2);
+   }
+
+   function restart(head) {
+      planner.dispose();
+      planner = createRoomPlanner(connections);
+      player.x = 0;
+      player.z = 1;
+      enemy.x = 14;
+      enemy.z = -14;
+      enemy.yaw = 0;
+      previousHead = [head[12], head[14]];
+      route = [];
+      nextPath = 0;
+      atNode = true;
+      playerRoom = 0;
+      nextRoom = null;
+      lastApplied = 'none';
+      seekerLine = '(Awaiting an applied DeepSeek decision.)';
+      powered = false;
+      result = null;
+      elapsed = 0;
+      hinge.identity().move(-.85, 0, 0);
+      doorLight.color([.8, .1, .05]);
+      switchLever.color([.8, .1, .05]);
+      doorLabel.info('EXIT / OFFLINE');
+   }
+
+   function clearSight(a, b) {
+      for (const [x, z, w, d] of walls) {
+         let enter = 0, leave = 1;
+         for (const [p, delta, lo, hi] of [[a.x, b.x - a.x, x - w / 2, x + w / 2],
+                                          [a.z, b.z - a.z, z - d / 2, z + d / 2]]) {
+            if (Math.abs(delta) < 1e-8) {
+               if (p < lo || p > hi) { enter = 2; break; }
+            }
+            else {
+               const u = (lo - p) / delta, v = (hi - p) / delta;
+               enter = Math.max(enter, Math.min(u, v));
+               leave = Math.min(leave, Math.max(u, v));
+            }
+         }
+         if (enter <= leave) return false;
+      }
+      return true;
+   }
+
+   const near = point => Math.hypot(player.x - point.x, player.z - point.z) < 1.6 && clearSight(player, point);
 
    function canStand(x, z, radius = .22) {
       if (!areas.some(([cx, cz, w, d]) => Math.abs(x - cx) <= w / 2 && Math.abs(z - cz) <= d / 2))
@@ -143,6 +213,10 @@ export const init = async (model, ctx, ctxForever = {}) => {
          immersive = inVR;
          previousHead = [head[12], head[14]];
       }
+      const triggerDown = inVR && !!buttonState.right[0]?.pressed;
+      const use = keyWentDown(KEY_E) || (triggerDown && !triggerWasDown);
+      triggerWasDown = triggerDown;
+      if (keyWentDown(KEY_R) || (result && use)) restart(head);
       let dx = head[12] - previousHead[0], dz = head[14] - previousHead[1];
       previousHead = [head[12], head[14]];
       const x = joyStickState.left.x || 0, y = joyStickState.left.y || 0;
@@ -154,14 +228,17 @@ export const init = async (model, ctx, ctxForever = {}) => {
          dx += (c * x + s * y) * distance;
          dz += (-s * x + c * y) * distance;
       }
-      move(dx, dz);
+      if (!result) {
+         elapsed += dt;
+         move(dx, dz);
+      }
       world.identity().move(head[12] - player.x, 0, head[14] - player.z);
 
       const currentPlayerRoom = roomAt(player), enemyRoom = roomAt(enemy);
       if (currentPlayerRoom >= 0) playerRoom = currentPlayerRoom;
       if (nextRoom !== null && Math.hypot(enemy.x - rooms[nextRoom][0], enemy.z - rooms[nextRoom][1]) < .2)
          nextRoom = null;
-      if (atNode && model.time >= nextPath) {
+      if (!result && atNode && model.time >= nextPath) {
          let plan = null;
          if (nextRoom === null && enemyRoom >= 0) {
             plan = planner.route(enemyRoom, playerRoom, model.time);
@@ -184,7 +261,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
          atNode = route.length === 0;
       }
       let walking = false;
-      if (route.length && Math.hypot(player.x - enemy.x, player.z - enemy.z) > .8) {
+      if (!result && route.length && Math.hypot(player.x - enemy.x, player.z - enemy.z) > .6) {
          const goal = route[0], dx = goal.x - enemy.x, dz = goal.z - enemy.z;
          const distance = Math.hypot(dx, dz);
          if (distance < .02) {
@@ -205,8 +282,19 @@ export const init = async (model, ctx, ctxForever = {}) => {
             enemy.yaw = Math.atan2(dx, dz);
          }
       }
+      if (!result && Math.hypot(player.x - enemy.x, player.z - enemy.z) < 1.05 && clearSight(enemy, player))
+         finish('lost');
+      if (!result && use) {
+         if (!powered && near(powerSwitch)) {
+            powered = true;
+            doorLight.color([.15, .9, .3]);
+            switchLever.color([.15, .9, .3]);
+            doorLabel.info('EXIT / POWERED');
+         }
+         else if (powered && near(exit)) finish('won');
+      }
       monster.identity().move(enemy.x, 0, enemy.z).turnY(enemy.yaw);
-      const gait = walking ? Math.sin(model.time * 6) * .3 : 0;
+      const gait = !result && walking ? Math.sin(model.time * 6) * .3 : 0;
       for (let i = 0; i < 2; i++) {
          const side = i === 0 ? -1 : 1;
          legs[i].identity().move(side * .16, .8, 0).turnX(side * gait);
@@ -215,15 +303,23 @@ export const init = async (model, ctx, ctxForever = {}) => {
 
       panel.setMatrix(head).move(0, -.32, -1.1);
       const mode = nextRoom !== null ? 'DeepSeek rooms + BFS' : enemyRoom === playerRoom ? 'BFS (same room)' : 'BFS fallback';
-      const messages = [
+      const prompt = near(powerSwitch) ? (powered ? 'Power is on. Return to the exit.' : 'Right trigger / E: turn on power') :
+                     near(exit) ? (powered ? 'Right trigger / E: escape' : 'Exit locked. Find the power switch.') : 'Right trigger / E: interact';
+      const messages = result ? [
+         result === 'won' ? 'YOU ESCAPED' : 'CAUGHT BY THE SEEKER',
+         `Time: ${Math.floor(elapsed)}s`,
+         powered ? 'Exit power restored.' : 'Exit power was still off.',
+         result === 'won' ? 'You reached the exit.' : 'The seeker caught you.',
+         'Right trigger / E / R: restart', '', '', ''
+      ] : [
          'SEEKER / DIALOGUE',
          seekerLine.slice(0, 48),
          seekerLine.slice(48, 96),
          seekerLine.slice(96),
+         powered ? 'Objective: return to exit in room 0' : 'Objective: power switch in room 2',
+         prompt,
          'Using: ' + mode,
-         'Last used: ' + lastApplied,
-         `Target: ${nextRoom === null ? 'player' : 'room ' + nextRoom} | Player: room ${playerRoom}`,
-         `DeepSeek: ${planner.state.status} | Query: ${planner.state.query}`
+         `Room: ${playerRoom} | Time: ${Math.floor(elapsed)}s | Route: ${lastApplied}`
       ];
       for (let i = 0; i < labels.length; i++) {
          const text = messages[i].slice(0, 48) || ' ';
