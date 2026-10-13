@@ -16,6 +16,8 @@ export default () => {
             { name: "beamSphere", path: "./beamSphere.js", public: true },
             { name: "construct" , path: "./construct.js" , public: true },
             { name: "aiquery"   , path: "./aiquery.js"   , public: true },
+            { name: "SO101"     , path: "./SO101.js"     , public: true },
+            { name: "SO101_parts", path: "./SO101_parts.js", public: true },
             { name: "shooting"   , path: "./shooting.js"     , public: true },
             { name: "font_test"  , path: "./font_test.js"    , public: true },
             { name: "penger_test", path: "./index.js"        , public: true },
