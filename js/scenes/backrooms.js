@@ -29,9 +29,9 @@ export const init = async (model, ctx, ctxForever = {}) => {
       parent.add('cube').move(x, y, z).scale(w / 2, h / 2, d / 2).color(color).dull();
 
    const panel = model.add(), labels = [], panelText = [];
-   panel.add('square').scale(.35, .18, 1).color([.04, .05, .04]).dull();
-   for (let i = 0; i < 6; i++)
-      labels.push(panel.add('label').info(' ').move(0, .125 - i * .05, .003).scale(.013).color([1, 1, 1]).dull());
+   panel.add('square').scale(.35, .21, 1).color([.04, .05, .04]).dull();
+   for (let i = 0; i < 8; i++)
+      labels.push(panel.add('label').info(' ').move(0, .16 - i * .045, .003).scale(.013).color([1, 1, 1]).dull());
 
    for (const [x, z, w, d] of areas) {
       box(world, x, -.06, z, w, .12, d, [.36, .31, .20]);
@@ -62,6 +62,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
    let route = [], nextPath = 0, atNode = true;
    let playerRoom = 0, nextRoom = null;
    let lastApplied = 'none';
+   let seekerLine = '(Awaiting an applied DeepSeek decision.)';
 
    function canStand(x, z, radius = .22) {
       if (!areas.some(([cx, cz, w, d]) => Math.abs(x - cx) <= w / 2 && Math.abs(z - cz) <= d / 2))
@@ -161,18 +162,24 @@ export const init = async (model, ctx, ctxForever = {}) => {
       if (nextRoom !== null && Math.hypot(enemy.x - rooms[nextRoom][0], enemy.z - rooms[nextRoom][1]) < .2)
          nextRoom = null;
       if (atNode && model.time >= nextPath) {
+         let plan = null;
          if (nextRoom === null && enemyRoom >= 0) {
-            const plan = planner.route(enemyRoom, playerRoom, model.time);
-            if (plan && plan.length > 1) {
-               nextRoom = plan[1];
-               lastApplied = plan.join(' -> ');
-               console.info('[Backrooms] Applied DeepSeek route:', lastApplied, 'next room:', nextRoom);
-            }
+            plan = planner.route(enemyRoom, playerRoom, model.time);
+            if (plan && plan.length > 1) nextRoom = plan[1];
          }
          const goal = nextRoom === null ? player : { x: rooms[nextRoom][0], z: rooms[nextRoom][1] };
          route = findPath(enemy, goal);
          if (route.length && Math.hypot(route[0].x - enemy.x, route[0].z - enemy.z) < .01)
             route.shift();
+         if (plan && plan.length > 1 && route.length) {
+            lastApplied = plan.join(' -> ');
+            const line = planner.takeLine(enemyRoom, playerRoom);
+            if (line) {
+               seekerLine = line;
+               console.info('[Backrooms] Seeker:', line);
+            }
+            console.info('[Backrooms] Applied DeepSeek route:', lastApplied, 'next room:', nextRoom);
+         }
          nextPath = model.time + .4;
          atNode = route.length === 0;
       }
@@ -209,17 +216,19 @@ export const init = async (model, ctx, ctxForever = {}) => {
       panel.setMatrix(head).move(0, -.32, -1.1);
       const mode = nextRoom !== null ? 'DeepSeek rooms + BFS' : enemyRoom === playerRoom ? 'BFS (same room)' : 'BFS fallback';
       const messages = [
-         'DeepSeek chase',
-         `Query: ${planner.state.query} (${planner.state.status})`,
-         'Reply: ' + planner.state.reply.replace(/\s+/g, ' '),
+         'SEEKER / DIALOGUE',
+         seekerLine.slice(0, 48),
+         seekerLine.slice(48, 96),
+         seekerLine.slice(96),
          'Using: ' + mode,
          'Last used: ' + lastApplied,
-         `Target: ${nextRoom === null ? 'player' : 'room ' + nextRoom} | Player: room ${playerRoom}`
+         `Target: ${nextRoom === null ? 'player' : 'room ' + nextRoom} | Player: room ${playerRoom}`,
+         `DeepSeek: ${planner.state.status} | Query: ${planner.state.query}`
       ];
       for (let i = 0; i < labels.length; i++) {
-         const text = messages[i].slice(0, 48);
+         const text = messages[i].slice(0, 48) || ' ';
          if (text !== panelText[i]) {
-            labels[i].info(text);
+            labels[i].info(text).opacity(text.trim() ? 1 : 0);
             panelText[i] = text;
          }
       }
