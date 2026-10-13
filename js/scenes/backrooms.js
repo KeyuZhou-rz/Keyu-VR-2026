@@ -237,7 +237,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
       if (keyWentDown(KEY_R) || (result && use)) restart(head);
       let dx = head[12] - previousHead[0], dz = head[14] - previousHead[1];
       previousHead = [head[12], head[14]];
-      const x = joyStickState.left.x || 0, y = joyStickState.left.y || 0;
+      const x = joyStickState.right.x || 0, y = joyStickState.right.y || 0;
       const length = Math.hypot(x, y);
       if (inVR && length > .2) {
          const yaw = Math.atan2(head[8], head[10]);
