@@ -1,4 +1,0 @@
-#!/bin/sh
-cd "$(dirname "$0")" || exit 1
-node_bin="${BACKROOMS_NODE:-$HOME/.nvm/versions/node/v18.20.8/bin/node}"
-exec "$node_bin" server/main.js 2026 2026 http
