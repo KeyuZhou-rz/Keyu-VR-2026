@@ -1,9 +1,14 @@
 import * as cg from '../render/core/cg.js';
 import { joyStickState } from '../render/core/controllerInput.js';
+import { createRoomPlanner } from '../util/roomPlanner.js';
 
-export const init = async model => {
+export const init = async (model, ctx, ctxForever = {}) => {
+   ctxForever.disposeBackrooms?.();
+   const planner = createRoomPlanner([[1, 2], [0, 3], [0, 3], [1, 2]]);
+   ctxForever.disposeBackrooms = () => planner.dispose();
    const world = model.add();
    const rooms = [[0, 0], [14, 0], [0, -14], [14, -14]];
+   const roomAt = point => rooms.findIndex(([x, z]) => Math.abs(point.x - x) < 4 && Math.abs(point.z - z) < 4);
    const areas = [], walls = [];
    for (const [x, z] of rooms) {
       areas.push([x, z, 8, 8]);
@@ -50,6 +55,7 @@ export const init = async model => {
    let previousHead = null, immersive = null;
    const enemy = { x: 14, z: -14, yaw: 0 };
    let route = [], nextPath = 0, atNode = true;
+   let playerRoom = 0, nextRoom = null;
 
    function canStand(x, z, radius = .22) {
       if (!areas.some(([cx, cz, w, d]) => Math.abs(x - cx) <= w / 2 && Math.abs(z - cz) <= d / 2))
@@ -144,8 +150,17 @@ export const init = async model => {
       move(dx, dz);
       world.identity().move(head[12] - player.x, 0, head[14] - player.z);
 
+      const currentPlayerRoom = roomAt(player), enemyRoom = roomAt(enemy);
+      if (currentPlayerRoom >= 0) playerRoom = currentPlayerRoom;
+      if (nextRoom !== null && Math.hypot(enemy.x - rooms[nextRoom][0], enemy.z - rooms[nextRoom][1]) < .2)
+         nextRoom = null;
       if (atNode && model.time >= nextPath) {
-         route = findPath(enemy, player);
+         if (nextRoom === null && enemyRoom >= 0) {
+            const plan = planner.route(enemyRoom, playerRoom, model.time);
+            if (plan && plan.length > 1) nextRoom = plan[1];
+         }
+         const goal = nextRoom === null ? player : { x: rooms[nextRoom][0], z: rooms[nextRoom][1] };
+         route = findPath(enemy, goal);
          if (route.length && Math.hypot(route[0].x - enemy.x, route[0].z - enemy.z) < .01)
             route.shift();
          nextPath = model.time + .4;
@@ -162,6 +177,7 @@ export const init = async model => {
             atNode = true;
          }
          else {
+            atNode = false;
             const step = Math.min(1.1 * dt, distance) / distance;
             const next = { x: enemy.x + dx * step, z: enemy.z + dz * step };
             if (canWalk(enemy, next, .4)) {
@@ -181,3 +197,5 @@ export const init = async model => {
       }
    });
 };
+
+export const deinit = (model, ctx, ctxForever) => ctxForever.disposeBackrooms?.();

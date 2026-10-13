@@ -420,7 +420,10 @@ holojam.on('tick', (a, b) => {
 */
 
 app.route("/api/aiquery").post(function(req, res) {
-   const { query, queryId, model, messages, tools, tool_choice, parallel_tool_calls, response_format } = req.body;
+   const { query, queryId, model, messages, tools, tool_choice, parallel_tool_calls, response_format, provider, max_tokens } = req.body;
+   const isDeepSeek = provider === 'deepseek';
+   const apiBase = isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1';
+   const defaultModel = isDeepSeek ? (process.env.DEEPSEEK_MODEL || 'deepseek-flash') : 'gpt-5.1';
    const hasMessages = Array.isArray(messages) && messages.length > 0;
    const queryText = ((typeof query === "string" ? query : openAISharedState.outgoingMessage) || "").trim();
 
@@ -432,25 +435,28 @@ app.route("/api/aiquery").post(function(req, res) {
       ? ((messages[messages.length - 1] && messages[messages.length - 1].content) || "[messages]")
       : queryText;
    openAISharedState.lastQueryId = queryId === undefined ? null : queryId;
-   openAISharedState.lastModel = model || "gpt-5.1";
+   openAISharedState.lastModel = model || defaultModel;
    openAISharedState.lastError = "";
 
-   console.log(`[OpenAI] outgoingMessage: ${openAISharedState.outgoingMessage}`);
+   console.log(`[AI] outgoingMessage: ${openAISharedState.outgoingMessage}`);
    
-   const apiKey = process.env.OPENAI_API_KEY;
+   const apiKey = isDeepSeek ? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY;
    if (!apiKey) {
-      console.error('OpenAI API key not found in .env file');
-      openAISharedState.lastError = "OpenAI API key not configured";
+      const keyName = isDeepSeek ? 'DEEPSEEK_API_KEY' : 'OPENAI_API_KEY';
+      openAISharedState.lastError = `${keyName} not configured`;
       return res.status(500).json({ 
-         error: "OpenAI API key not configured", 
-         details: "Add OPENAI_API_KEY to your .env file",
+         error: openAISharedState.lastError,
+         details: `Add ${keyName} to your .env file`,
          state: openAISharedState
       });
    }
    
    const defaultSystem = "You are a helpful assistant in a WebXR environment. Provide concise, informative responses.";
    const modelToUse = openAISharedState.lastModel;
-   const useResponses = /-codex\\b/i.test(modelToUse);
+   const useResponses = !isDeepSeek && /-codex\\b/i.test(modelToUse);
+   const controller = isDeepSeek ? new AbortController() : null;
+   const timeout = isDeepSeek ? setTimeout(() => controller.abort(), 8000) : null;
+   if (controller) res.on('close', () => controller.abort());
 
    const sendSuccess = (responseText, message) => {
       openAISharedState.incomingMessage = responseText;
@@ -460,11 +466,12 @@ app.route("/api/aiquery").post(function(req, res) {
          message: message || { content: responseText },
          state: openAISharedState
       });
-      console.log(`[OpenAI] incomingMessage: ${responseText}`);
+      console.log(`[AI] incomingMessage: ${responseText}`);
    };
 
    const sendFailure = error => {
-      console.error('Error calling OpenAI API:', error);
+      if (res.destroyed) return;
+      console.error('Error calling AI API:', error.message);
       openAISharedState.lastError = error.message;
       res.status(500).json({
          error: "Error processing AI query",
@@ -483,24 +490,28 @@ app.route("/api/aiquery").post(function(req, res) {
          model: modelToUse,
          messages: requestMessages
       };
+      if (isDeepSeek) requestBody.thinking = { type: 'disabled' };
+      if (max_tokens !== undefined) requestBody.max_tokens = max_tokens;
       if (tools) requestBody.tools = tools;
       if (tool_choice) requestBody.tool_choice = tool_choice;
-      if (parallel_tool_calls !== undefined) requestBody.parallel_tool_calls = parallel_tool_calls;
+      if (!isDeepSeek && parallel_tool_calls !== undefined) requestBody.parallel_tool_calls = parallel_tool_calls;
       if (response_format) requestBody.response_format = response_format;
 
-      return fetch('https://api.openai.com/v1/chat/completions', {
+      return fetch(apiBase + '/chat/completions', {
          method: 'POST',
+         signal: controller?.signal,
          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`
          },
          body: JSON.stringify(requestBody)
       })
-      .then(response => {
+      .then(async response => {
+         const data = await response.json();
          if (!response.ok) {
-            throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+            throw new Error(data.error?.message || `AI API error: ${response.status} ${response.statusText}`);
          }
-         return response.json();
+         return data;
       })
       .then(data => {
          const message = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message : {};
@@ -610,7 +621,8 @@ app.route("/api/aiquery").post(function(req, res) {
 
    runner()
       .then(({ responseText, message }) => sendSuccess(responseText, message))
-      .catch(sendFailure);
+      .catch(sendFailure)
+      .finally(() => clearTimeout(timeout));
 });
 
 app.route("/api/aiquery/state").get(function(req, res) {
