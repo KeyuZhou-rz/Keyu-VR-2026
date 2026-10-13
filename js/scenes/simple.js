@@ -9,5 +9,3 @@ export const init = async model => {
    });
 }
 
-
-
