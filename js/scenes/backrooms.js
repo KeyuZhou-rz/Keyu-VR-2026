@@ -28,6 +28,11 @@ export const init = async (model, ctx, ctxForever = {}) => {
    const box = (parent, x, y, z, w, h, d, color) =>
       parent.add('cube').move(x, y, z).scale(w / 2, h / 2, d / 2).color(color).dull();
 
+   const panel = model.add(), labels = [], panelText = [];
+   panel.add('square').scale(.35, .18, 1).color([.04, .05, .04]).dull();
+   for (let i = 0; i < 6; i++)
+      labels.push(panel.add('label').info(' ').move(0, .125 - i * .05, .003).scale(.013).color([1, 1, 1]).dull());
+
    for (const [x, z, w, d] of areas) {
       box(world, x, -.06, z, w, .12, d, [.36, .31, .20]);
       box(world, x, 3.2, z, w, .12, d, [.72, .70, .59]);
@@ -56,6 +61,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
    const enemy = { x: 14, z: -14, yaw: 0 };
    let route = [], nextPath = 0, atNode = true;
    let playerRoom = 0, nextRoom = null;
+   let lastApplied = 'none';
 
    function canStand(x, z, radius = .22) {
       if (!areas.some(([cx, cz, w, d]) => Math.abs(x - cx) <= w / 2 && Math.abs(z - cz) <= d / 2))
@@ -157,7 +163,11 @@ export const init = async (model, ctx, ctxForever = {}) => {
       if (atNode && model.time >= nextPath) {
          if (nextRoom === null && enemyRoom >= 0) {
             const plan = planner.route(enemyRoom, playerRoom, model.time);
-            if (plan && plan.length > 1) nextRoom = plan[1];
+            if (plan && plan.length > 1) {
+               nextRoom = plan[1];
+               lastApplied = plan.join(' -> ');
+               console.info('[Backrooms] Applied DeepSeek route:', lastApplied, 'next room:', nextRoom);
+            }
          }
          const goal = nextRoom === null ? player : { x: rooms[nextRoom][0], z: rooms[nextRoom][1] };
          route = findPath(enemy, goal);
@@ -194,6 +204,24 @@ export const init = async (model, ctx, ctxForever = {}) => {
          const side = i === 0 ? -1 : 1;
          legs[i].identity().move(side * .16, .8, 0).turnX(side * gait);
          arms[i].identity().move(side * .36, 1.72, 0).turnX(-side * gait);
+      }
+
+      panel.setMatrix(head).move(0, -.32, -1.1);
+      const mode = nextRoom !== null ? 'DeepSeek rooms + BFS' : enemyRoom === playerRoom ? 'BFS (same room)' : 'BFS fallback';
+      const messages = [
+         'DeepSeek chase',
+         `Query: ${planner.state.query} (${planner.state.status})`,
+         'Reply: ' + planner.state.reply.replace(/\s+/g, ' '),
+         'Using: ' + mode,
+         'Last used: ' + lastApplied,
+         `Target: ${nextRoom === null ? 'player' : 'room ' + nextRoom} | Player: room ${playerRoom}`
+      ];
+      for (let i = 0; i < labels.length; i++) {
+         const text = messages[i].slice(0, 48);
+         if (text !== panelText[i]) {
+            labels[i].info(text);
+            panelText[i] = text;
+         }
       }
    });
 };

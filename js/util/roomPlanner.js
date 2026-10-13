@@ -1,10 +1,14 @@
 export function createRoomPlanner(connections) {
    const cache = new Map();
+   const state = { status: 'idle', query: 'none', reply: '(none yet)' };
    let pending = null, nextRequest = 0, active = true;
 
    async function request(from, to) {
       const controller = new AbortController();
       pending = controller;
+      state.status = 'waiting';
+      state.query = from + ' -> ' + to;
+      state.reply = '(none yet)';
       const timeout = setTimeout(() => controller.abort(), 10000);
       try {
          const response = await fetch('/api/aiquery', {
@@ -22,21 +26,25 @@ export function createRoomPlanner(connections) {
             })
          });
          const data = await response.json();
+         if (!active || controller.signal.aborted) return;
          if (!response.ok) throw new Error(data.details || data.error || 'AI request failed');
-         const path = JSON.parse(data.message?.content || data.response).rooms;
+         state.reply = data.message?.content || data.response || '(empty reply)';
+         const path = JSON.parse(state.reply).rooms;
          if (!Array.isArray(path) || path.length > connections.length ||
              path[0] !== from || path[path.length - 1] !== to ||
              new Set(path).size !== path.length ||
              !path.every(room => Number.isInteger(room) && room >= 0 && room < connections.length) ||
              !path.every((room, i) => i === 0 || connections[path[i - 1]].includes(room)))
             throw new Error('Invalid room route');
-         if (active && !controller.signal.aborted) {
-            for (let i = 0; i < path.length; i++) cache.set(path[i] + ',' + to, path.slice(i));
-            console.info('[Backrooms] DeepSeek route:', path.join(' -> '));
-         }
+         for (let i = 0; i < path.length; i++) cache.set(path[i] + ',' + to, path.slice(i));
+         state.status = 'ready';
+         console.info('[Backrooms] DeepSeek route:', path.join(' -> '));
       }
       catch (error) {
-         if (active) console.warn('[Backrooms] DeepSeek unavailable; using BFS:', error.message);
+         if (active) {
+            state.status = 'failed';
+            console.warn('[Backrooms] DeepSeek request failed:', state.query, error.message);
+         }
       }
       finally {
          clearTimeout(timeout);
@@ -45,6 +53,7 @@ export function createRoomPlanner(connections) {
    }
 
    return {
+      state,
       route(from, to, time) {
          if (from === to) return [from];
          const path = cache.get(from + ',' + to);
