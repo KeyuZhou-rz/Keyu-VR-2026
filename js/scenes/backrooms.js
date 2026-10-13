@@ -3,14 +3,23 @@ import { joyStickState } from '../render/core/controllerInput.js';
 
 export const init = async model => {
    const world = model.add();
-   const areas = [[0, 0, 8, 8], [0, -7, 2, 6], [0, -14, 8, 8]];
-   const walls = [
-      [0, 4, 8, .2], [-4, 0, .2, 8], [4, 0, .2, 8],
-      [-2.5, -4, 3, .2], [2.5, -4, 3, .2],
-      [-1, -7, .2, 6], [1, -7, .2, 6],
-      [0, -18, 8, .2], [-4, -14, .2, 8], [4, -14, .2, 8],
-      [-2.5, -10, 3, .2], [2.5, -10, 3, .2]
-   ];
+   const rooms = [[0, 0], [14, 0], [0, -14], [14, -14]];
+   const areas = [], walls = [];
+   for (const [x, z] of rooms) {
+      areas.push([x, z, 8, 8]);
+      const sx = x === 0 ? 1 : -1, sz = z === 0 ? -1 : 1;
+      walls.push([x - sx * 4, z, .2, 8], [x, z - sz * 4, 8, .2]);
+      for (const offset of [-2.5, 2.5])
+         walls.push([x + sx * 4, z + offset, .2, 3], [x + offset, z + sz * 4, 3, .2]);
+   }
+   for (const z of [0, -14]) {
+      areas.push([7, z, 6, 2]);
+      walls.push([7, z - 1, 6, .2], [7, z + 1, 6, .2]);
+   }
+   for (const x of [0, 14]) {
+      areas.push([x, -7, 2, 6]);
+      walls.push([x - 1, -7, .2, 6], [x + 1, -7, .2, 6]);
+   }
    const box = (parent, x, y, z, w, h, d, color) =>
       parent.add('cube').move(x, y, z).scale(w / 2, h / 2, d / 2).color(color).dull();
 
@@ -20,8 +29,8 @@ export const init = async model => {
    }
    for (const [x, z, w, d] of walls)
       box(world, x, 1.6, z, w, 3.2, d, [.74, .68, .40]);
-   for (const z of [1, -2, -7, -12, -15])
-      box(world, 0, 3.12, z, .65, .06, 1.4, [1, .98, .83]);
+   for (const [x, z] of areas)
+      box(world, x, 3.12, z, .65, .06, 1.4, [1, .98, .83]);
 
    const monster = world.add();
    const dark = [.045, .05, .04];
@@ -39,15 +48,16 @@ export const init = async model => {
 
    const player = { x: 0, z: 1 };
    let previousHead = null, immersive = null;
-   let monsterZ = -14, direction = 1;
+   const enemy = { x: 14, z: -14, yaw: 0 };
+   let route = [], nextPath = 0, atNode = true;
 
-   function canStand(x, z) {
+   function canStand(x, z, radius = .22) {
       if (!areas.some(([cx, cz, w, d]) => Math.abs(x - cx) <= w / 2 && Math.abs(z - cz) <= d / 2))
          return false;
       for (const [cx, cz, w, d] of walls) {
          const dx = Math.max(0, Math.abs(x - cx) - w / 2);
          const dz = Math.max(0, Math.abs(z - cz) - d / 2);
-         if (dx * dx + dz * dz < .22 * .22) return false;
+         if (dx * dx + dz * dz < radius * radius) return false;
       }
       return true;
    }
@@ -58,6 +68,58 @@ export const init = async model => {
          if (canStand(player.x + dx / steps, player.z)) player.x += dx / steps;
          if (canStand(player.x, player.z + dz / steps)) player.z += dz / steps;
       }
+   }
+
+   function canWalk(a, b, radius) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / .1));
+      for (let i = 0; i <= steps; i++)
+         if (!canStand(a.x + (b.x - a.x) * i / steps, a.z + (b.z - a.z) * i / steps, radius))
+            return false;
+      return true;
+   }
+
+   const grid = new Map(), nodes = [];
+   for (let x = -4; x <= 18; x++)
+      for (let z = -18; z <= 4; z++)
+         if (canStand(x, z, .4)) {
+            const node = { x, z, neighbors: [] };
+            grid.set(x + ',' + z, node);
+            nodes.push(node);
+         }
+   for (const node of nodes)
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+         const neighbor = grid.get((node.x + dx) + ',' + (node.z + dz));
+         if (neighbor && canWalk(node, neighbor, .4)) node.neighbors.push(neighbor);
+      }
+
+   function nearest(point, radius) {
+      const rounded = grid.get(Math.round(point.x) + ',' + Math.round(point.z));
+      if (rounded && canWalk(point, rounded, radius)) return rounded;
+      let best = null, distance = Infinity;
+      for (const node of nodes) {
+         const d = Math.hypot(node.x - point.x, node.z - point.z);
+         if (d < distance && canWalk(point, node, radius)) {
+            best = node;
+            distance = d;
+         }
+      }
+      return best;
+   }
+
+   function findPath(from, to) {
+      const start = nearest(from, .4), goal = nearest(to, .22);
+      if (!start || !goal) return [];
+      const queue = [start], previous = new Map([[start, null]]);
+      for (let i = 0; i < queue.length && !previous.has(goal); i++)
+         for (const neighbor of queue[i].neighbors)
+            if (!previous.has(neighbor)) {
+               previous.set(neighbor, queue[i]);
+               queue.push(neighbor);
+            }
+      if (!previous.has(goal)) return [];
+      const path = [];
+      for (let node = goal; node; node = previous.get(node)) path.unshift(node);
+      return path;
    }
 
    model.animate(() => {
@@ -82,13 +144,36 @@ export const init = async model => {
       move(dx, dz);
       world.identity().move(head[12] - player.x, 0, head[14] - player.z);
 
-      monsterZ += direction * dt;
-      if (monsterZ > -1 || monsterZ < -15) {
-         monsterZ = Math.max(-15, Math.min(-1, monsterZ));
-         direction = -direction;
+      if (atNode && model.time >= nextPath) {
+         route = findPath(enemy, player);
+         if (route.length && Math.hypot(route[0].x - enemy.x, route[0].z - enemy.z) < .01)
+            route.shift();
+         nextPath = model.time + .4;
+         atNode = route.length === 0;
       }
-      monster.identity().move(0, 0, monsterZ).turnY(direction > 0 ? 0 : Math.PI);
-      const gait = Math.sin(model.time * 6) * .3;
+      let walking = false;
+      if (route.length && Math.hypot(player.x - enemy.x, player.z - enemy.z) > .8) {
+         const goal = route[0], dx = goal.x - enemy.x, dz = goal.z - enemy.z;
+         const distance = Math.hypot(dx, dz);
+         if (distance < .02) {
+            enemy.x = goal.x;
+            enemy.z = goal.z;
+            route.shift();
+            atNode = true;
+         }
+         else {
+            const step = Math.min(1.1 * dt, distance) / distance;
+            const next = { x: enemy.x + dx * step, z: enemy.z + dz * step };
+            if (canWalk(enemy, next, .4)) {
+               enemy.x = next.x;
+               enemy.z = next.z;
+               walking = true;
+            }
+            enemy.yaw = Math.atan2(dx, dz);
+         }
+      }
+      monster.identity().move(enemy.x, 0, enemy.z).turnY(enemy.yaw);
+      const gait = walking ? Math.sin(model.time * 6) * .3 : 0;
       for (let i = 0; i < 2; i++) {
          const side = i === 0 ? -1 : 1;
          legs[i].identity().move(side * .16, .8, 0).turnX(side * gait);
