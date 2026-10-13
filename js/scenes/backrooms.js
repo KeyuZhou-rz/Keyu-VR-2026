@@ -45,7 +45,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
    noticeContext.textAlign = 'center';
    noticeContext.textBaseline = 'middle';
    noticeContext.fillStyle = '#ffbb99';
-   noticeContext.fillText('看到玩家了！', 256, 64);
+   noticeContext.fillText('I see you', 256, 64);
    const sightNotice = model.add('square').setTxtr(noticeCanvas, 7, true).color([1, 1, 1]).dull().opacity(0);
 
    for (const [x, z, w, d] of areas) {
