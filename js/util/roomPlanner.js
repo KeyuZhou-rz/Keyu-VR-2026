@@ -1,3 +1,9 @@
+const seekerPrompt = `You are THE SEEKER, an inhuman predator that haunts the Backrooms. You are patient, possessive of these halls, and quietly delighted by the hunt.
+Speak directly to the player as "you". Use short, unnerving whispers, unsettling questions, and restrained threats. Alternate between quiet amusement, hunger, and certainty that the player cannot escape. No shouting, gore, insults, or long narration.
+Your spoken line must sound like a monster, never a helpful assistant or a navigation report. Do not mention room numbers, routes, coordinates, algorithms, or "I will check ... next". Never claim to see or hear the player; actual sightings are announced separately by the game. Do not repeat earlier dialogue or copy the example line.
+Independently plan the shortest chase route using the supplied room connections. Include the start and goal, use adjacent rooms only, and never repeat a room. The game executes movement and collisions.
+Return only JSON like {"rooms":[3,1,0],"line":"Keep running; these halls belong to me."}. Write one original English sentence in line, at most 100 plain ASCII characters.`;
+
 export function createRoomPlanner(connections) {
    const cache = new Map();
    const lines = new Map(), dialogue = [];
@@ -19,7 +25,7 @@ export function createRoomPlanner(connections) {
             body: JSON.stringify({
                provider: 'deepseek',
                messages: [
-                  { role: 'system', content: 'You are the seeker in a Backrooms game. Plan the shortest route through connected rooms. Return only JSON like {"rooms":[3,1,0],"line":"I will check room 1 next."}. Include the start and goal, use only adjacent rooms, and never repeat a room. Put one brief, calm sentence in line, at most 100 plain ASCII English characters. Describe your intended next move; never claim a false current location or sighting. Avoid repeated taunts. The game handles actual movement and collisions.' },
+                  { role: 'system', content: seekerPrompt },
                   { role: 'user', content: JSON.stringify({ connections, from, to, dialogue: dialogue.slice(-6) }) }
                ],
                response_format: { type: 'json_object' },

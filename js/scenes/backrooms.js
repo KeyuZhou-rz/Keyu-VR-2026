@@ -35,6 +35,19 @@ export const init = async (model, ctx, ctxForever = {}) => {
    for (let i = 0; i < 8; i++)
       labels.push(panel.add('label').info(' ').move(0, .16 - i * .045, .003).scale(.013).color([1, 1, 1]).dull());
 
+   const noticeCanvas = document.createElement('canvas');
+   noticeCanvas.width = 512;
+   noticeCanvas.height = 128;
+   const noticeContext = noticeCanvas.getContext('2d');
+   noticeContext.fillStyle = '#29100c';
+   noticeContext.fillRect(0, 0, 512, 128);
+   noticeContext.font = 'bold 56px sans-serif';
+   noticeContext.textAlign = 'center';
+   noticeContext.textBaseline = 'middle';
+   noticeContext.fillStyle = '#ffbb99';
+   noticeContext.fillText('看到玩家了！', 256, 64);
+   const sightNotice = model.add('square').setTxtr(noticeCanvas, 7, true).color([1, 1, 1]).dull().opacity(0);
+
    for (const [x, z, w, d] of areas) {
       box(world, x, -.06, z, w, .12, d, [.36, .31, .20]);
       box(world, x, 3.2, z, w, .12, d, [.72, .70, .59]);
@@ -80,11 +93,13 @@ export const init = async (model, ctx, ctxForever = {}) => {
    let lastApplied = 'none';
    let seekerLine = '(Awaiting an applied DeepSeek decision.)';
    let powered = false, result = null, elapsed = 0, triggerWasDown = false;
+   let seesPlayer = false, sightNoticeUntil = 0;
 
    function finish(outcome) {
       result = outcome;
       route = [];
       planner.dispose();
+      sightNotice.opacity(0);
       if (outcome === 'won') hinge.identity().move(-.85, 0, 0).turnY(-Math.PI / 2);
    }
 
@@ -107,6 +122,9 @@ export const init = async (model, ctx, ctxForever = {}) => {
       powered = false;
       result = null;
       elapsed = 0;
+      seesPlayer = false;
+      sightNoticeUntil = 0;
+      sightNotice.opacity(0);
       hinge.identity().move(-.85, 0, 0);
       doorLight.color([.8, .1, .05]);
       switchLever.color([.8, .1, .05]);
@@ -301,7 +319,13 @@ export const init = async (model, ctx, ctxForever = {}) => {
          arms[i].identity().move(side * .36, 1.72, 0).turnX(-side * gait);
       }
 
+      const visible = !result && clearSight(enemy, player);
+      if (visible && !seesPlayer) sightNoticeUntil = model.time + 2.5;
+      seesPlayer = visible;
+
       panel.setMatrix(head).move(0, -.32, -1.1);
+      sightNotice.setMatrix(head).move(0, .1, -.9).scale(.28, .07, 1)
+                 .opacity(!result && seesPlayer && model.time < sightNoticeUntil ? 1 : 0);
       const mode = nextRoom !== null ? 'DeepSeek rooms + BFS' : enemyRoom === playerRoom ? 'BFS (same room)' : 'BFS fallback';
       const prompt = near(powerSwitch) ? (powered ? 'Power is on. Return to the exit.' : 'Right trigger / E: turn on power') :
                      near(exit) ? (powered ? 'Right trigger / E: escape' : 'Exit locked. Find the power switch.') : 'Right trigger / E: interact';
