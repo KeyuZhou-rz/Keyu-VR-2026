@@ -91,7 +91,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
    let route = [], nextPath = 0, atNode = true;
    let playerRoom = 0, nextRoom = null;
    let lastApplied = 'none';
-   let seekerLine = '(Awaiting an applied DeepSeek decision.)';
+   let seekerLine = '(Awaiting DeepSeek dialogue.)';
    let powered = false, result = null, elapsed = 0, triggerWasDown = false;
    let seesPlayer = false, sightNoticeUntil = 0;
 
@@ -118,7 +118,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
       playerRoom = 0;
       nextRoom = null;
       lastApplied = 'none';
-      seekerLine = '(Awaiting an applied DeepSeek decision.)';
+      seekerLine = '(Awaiting DeepSeek dialogue.)';
       powered = false;
       result = null;
       elapsed = 0;
@@ -254,12 +254,20 @@ export const init = async (model, ctx, ctxForever = {}) => {
 
       const currentPlayerRoom = roomAt(player), enemyRoom = roomAt(enemy);
       if (currentPlayerRoom >= 0) playerRoom = currentPlayerRoom;
+      if (!result) {
+         planner.tick(enemyRoom, playerRoom, model.time);
+         const line = planner.takeLine();
+         if (line) {
+            seekerLine = line;
+            console.info('[Backrooms] Seeker:', line);
+         }
+      }
       if (nextRoom !== null && Math.hypot(enemy.x - rooms[nextRoom][0], enemy.z - rooms[nextRoom][1]) < .2)
          nextRoom = null;
       if (!result && atNode && model.time >= nextPath) {
          let plan = null;
          if (nextRoom === null && enemyRoom >= 0) {
-            plan = planner.route(enemyRoom, playerRoom, model.time);
+            plan = planner.route(enemyRoom, playerRoom);
             if (plan && plan.length > 1) nextRoom = plan[1];
          }
          const goal = nextRoom === null ? player : { x: rooms[nextRoom][0], z: rooms[nextRoom][1] };
@@ -268,11 +276,6 @@ export const init = async (model, ctx, ctxForever = {}) => {
             route.shift();
          if (plan && plan.length > 1 && route.length) {
             lastApplied = plan.join(' -> ');
-            const line = planner.takeLine(enemyRoom, playerRoom);
-            if (line) {
-               seekerLine = line;
-               console.info('[Backrooms] Seeker:', line);
-            }
             console.info('[Backrooms] Applied DeepSeek route:', lastApplied, 'next room:', nextRoom);
          }
          nextPath = model.time + .4;

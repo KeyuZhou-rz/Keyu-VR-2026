@@ -6,9 +6,9 @@ Return only JSON like {"rooms":[3,1,0],"line":"Keep running; these halls belong 
 
 export function createRoomPlanner(connections) {
    const cache = new Map();
-   const lines = new Map(), dialogue = [];
+   const dialogue = [];
    const state = { status: 'idle', query: 'none', reply: '(none yet)' };
-   let pending = null, nextRequest = 0, active = true;
+   let pending = null, nextRequest = 0, active = true, lastRoom = null, nextLine = '';
 
    async function request(from, to) {
       const controller = new AbortController();
@@ -46,7 +46,7 @@ export function createRoomPlanner(connections) {
             throw new Error('Invalid room route');
          if (!/^[\x20-\x7e]{1,100}$/.test(line)) throw new Error('Invalid seeker dialogue');
          for (let i = 0; i < path.length; i++) cache.set(path[i] + ',' + to, path.slice(i));
-         lines.set(from + ',' + to, line);
+         nextLine = line;
          state.status = 'ready';
          console.info('[Backrooms] DeepSeek route:', path.join(' -> '));
       }
@@ -64,19 +64,20 @@ export function createRoomPlanner(connections) {
 
    return {
       state,
-      route(from, to, time) {
-         if (from === to) return [from];
-         const path = cache.get(from + ',' + to);
-         if (!path && active && !pending && time >= nextRequest) {
-            nextRequest = time + 6;
-            request(from, to);
+      tick(from, to, time) {
+         if (from >= 0) lastRoom = from;
+         if (active && lastRoom !== null && !pending && time >= nextRequest) {
+            nextRequest = time + 5 + Math.random() * 5;
+            request(lastRoom, to);
          }
-         return path || null;
       },
-      takeLine(from, to) {
-         const key = from + ',' + to, line = lines.get(key);
-         if (!line) return '';
-         lines.delete(key);
+      route(from, to) {
+         return from === to ? [from] : cache.get(from + ',' + to) || null;
+      },
+      takeLine() {
+         if (!active || !nextLine) return '';
+         const line = nextLine;
+         nextLine = '';
          dialogue.push({ speaker: 'monster', text: line });
          if (dialogue.length > 6) dialogue.shift();
          return line;
