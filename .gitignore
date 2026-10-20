@@ -9,6 +9,7 @@ cert.cer
 
 !package.json
 !package-lock.json
+!js/scenes/village.json
 
 /build/
 __pycache__/

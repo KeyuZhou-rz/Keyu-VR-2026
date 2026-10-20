@@ -1,0 +1,330 @@
+{
+  "version": 3,
+  "time": 0,
+  "grid": {
+    "width": 24,
+    "depth": 24,
+    "cellSize": 0.075
+  },
+  "regions": [
+    {
+      "id": "home",
+      "name": "Woodside Cottage",
+      "kind": "house",
+      "tags": [
+        "shelter"
+      ],
+      "cell": [
+        1,
+        17
+      ],
+      "size": 4,
+      "entry": [
+        3,
+        16
+      ]
+    },
+    {
+      "id": "north-lake",
+      "name": "North Lake",
+      "kind": "water",
+      "tags": [
+        "water"
+      ],
+      "cell": [
+        17,
+        2
+      ],
+      "size": 4
+    },
+    {
+      "id": "south-pond",
+      "name": "South Pond",
+      "kind": "water",
+      "tags": [
+        "water"
+      ],
+      "cell": [
+        17,
+        17
+      ],
+      "size": 3
+    },
+    {
+      "id": "west-forest",
+      "name": "West Woods",
+      "kind": "forest",
+      "tags": [
+        "forest"
+      ],
+      "cell": [
+        1,
+        2
+      ],
+      "size": 6,
+      "obstacles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          5,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "central-forest",
+      "name": "Central Woods",
+      "kind": "forest",
+      "tags": [
+        "forest"
+      ],
+      "cell": [
+        9,
+        8
+      ],
+      "size": 6,
+      "obstacles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          5,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "east-forest",
+      "name": "East Woods",
+      "kind": "forest",
+      "tags": [
+        "forest"
+      ],
+      "cell": [
+        17,
+        9
+      ],
+      "size": 5,
+      "obstacles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          3
+        ]
+      ]
+    }
+  ],
+  "obstacles": [
+    [
+      8,
+      6
+    ],
+    [
+      8,
+      8
+    ],
+    [
+      8,
+      9
+    ],
+    [
+      8,
+      10
+    ],
+    [
+      8,
+      12
+    ],
+    [
+      8,
+      13
+    ],
+    [
+      8,
+      14
+    ],
+    [
+      8,
+      15
+    ],
+    [
+      8,
+      16
+    ],
+    [
+      8,
+      18
+    ],
+    [
+      8,
+      19
+    ],
+    [
+      8,
+      20
+    ],
+    [
+      9,
+      6
+    ],
+    [
+      10,
+      6
+    ],
+    [
+      10,
+      17
+    ],
+    [
+      11,
+      6
+    ],
+    [
+      11,
+      17
+    ],
+    [
+      12,
+      17
+    ],
+    [
+      13,
+      6
+    ],
+    [
+      13,
+      17
+    ],
+    [
+      14,
+      6
+    ],
+    [
+      14,
+      17
+    ],
+    [
+      15,
+      6
+    ],
+    [
+      15,
+      17
+    ],
+    [
+      15,
+      18
+    ],
+    [
+      15,
+      19
+    ],
+    [
+      15,
+      20
+    ],
+    [
+      15,
+      21
+    ],
+    [
+      16,
+      6
+    ]
+  ],
+  "rabbit": {
+    "name": "Penger",
+    "position": [
+      3,
+      15
+    ],
+    "speed": 3,
+    "heading": 0,
+    "target": null,
+    "path": [],
+    "status": "idle",
+    "behavior": "exploring",
+    "reason": "New neighborhood, same excellent waddle. Let's see what's out there.",
+    "needs": {
+      "thirst": 0.35,
+      "fatigue": 0.15
+    },
+    "sight": 4,
+    "known": [],
+    "explored": [],
+    "memories": [],
+    "memoryCount": 0,
+    "intent": 0,
+    "pathVersion": 0,
+    "pendingPlan": null,
+    "nextSense": 0,
+    "nextDecision": 0,
+    "plan": null,
+    "routeRevision": 0,
+    "needsReplan": false,
+    "surprise": null
+  },
+  "ai": {
+    "planner": {
+      "status": "idle",
+      "detail": ""
+    },
+    "dialogue": {
+      "status": "idle",
+      "detail": ""
+    },
+    "history": []
+  },
+  "mapRevision": 0,
+  "events": []
+}

@@ -2,6 +2,7 @@ export default () => {
    return {
       enableSceneReloading: true,
       scenes: [ 
+            { name: "village"    , path: "./village.js"    , public: true },
             { name: "backrooms"  , path: "./backrooms.js"  , public: true },
             { name: "simple"     , path: "./simple.js"     , public: true },
             { name: "shapes"     , path: "./shapes.js"     , public: true },
