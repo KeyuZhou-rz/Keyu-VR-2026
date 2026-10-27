@@ -12,8 +12,10 @@ Open the course app and select **village**. Penger (green), Pip (gold), and Mox 
 ## God view and village view
 
 - **God view** (default): the village is a tabletop board; grip drags places.
-- **Village view**: press **V** (desktop), the **Enter village** button, or **B** in VR. The board scales up so one grid cell is half a meter and you stand on the ground at the nearest free cell. Walk with WASD or the right stick; water, houses and trees block you. Dragging places is disabled here.
-- Penguins within 2.5 cells turn toward you and greet you once (30 s cooldown), remember it, and route around you. The nearest penguin within 3 cells is auto-selected for chat, and its dialogue snapshot says `playerIsHere`. Chatting with a faraway penguin is ignored.
+- **Village view**: press **V** (desktop), the **Enter village** button, or **B** in VR. The board scales up so one grid cell is half a meter and you stand on the ground at the nearest free cell. Walk with WASD or the **left** stick, and turn the village around you with the **right** stick; water, houses and trees block you. Dragging places is disabled here.
+- Penguins within 2.5 cells turn toward you and greet you once (30 s cooldown), remember it, and route around you.
+- The nearest penguin within 2.5 cells opens a **talk card** floating above it, turned toward your eyes: its latest line in large text plus four replies (How are you? / What are you up to? / Heard any news? / Bye for now). Point the right controller at a reply and pull the trigger, or press 1–4. The god-view panel is hidden in this mode. "Bye" closes the card until you step away and return.
+- The talk partner is the selected resident, and its dialogue snapshot says `playerIsHere`.
 
 ## Things to try
 

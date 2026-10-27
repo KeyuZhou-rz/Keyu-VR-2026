@@ -538,7 +538,7 @@ function updateResident(state, resident, dt) {
       if (resident.status !== 'moving' || required && required !== currentAction) chooseRule(state, resident);
       resident.nextDecision = state.time + 1;
    }
-   stepResident(state, dt, resident);
+   if (!resident.attending) stepResident(state, dt, resident);
    if (resident.status === 'arrived' && resident.yielding) {
       resident.yielding = false;
       refreshRoute(state, resident);
@@ -614,10 +614,17 @@ export function nearestResident(state, radius = 3) {
    return best;
 }
 
-function visitPlayer(state, resident, dt) {
-   const player = state.player, near = player?.mode === 'world' && distance(resident.position, player.position) <= 2.5;
-   if (!near) { resident.metPlayer = false; return; }
-   if (resident.status !== 'moving' && onGrid(resident.position))
+// A resident who notices the visitor stops and faces them until the visitor walks away on purpose.
+function visitPlayer(state, resident) {
+   const player = state.player, here = player?.mode === 'world', gap = here ? distance(resident.position, player.position) : Infinity;
+   if (gap > 3.5) { resident.released = false; resident.attending = null; }
+   if (gap > 2.5) { resident.metPlayer = false; resident.attending = null; return; }
+   if (resident.attending && distance(player.position, resident.attending.at) > .3) {
+      resident.attending = null;
+      resident.released = true;
+   }
+   else if (!resident.attending && !resident.released) resident.attending = { at: player.position.slice() };
+   if (resident.attending)
       resident.heading = Math.atan2(player.position[0] - resident.position[0], player.position[1] - resident.position[1]);
    if (resident.metPlayer) return;
    resident.metPlayer = true;
@@ -630,7 +637,7 @@ function visitPlayer(state, resident, dt) {
 export function stepWorld(state, dt) {
    state.time += dt;
    for (const resident of state.residents) updateResident(state, resident, dt);
-   for (const resident of state.residents) visitPlayer(state, resident, dt);
+   for (const resident of state.residents) visitPlayer(state, resident);
    if (state.time >= state.nextSocial) {
       for (let i = 0; i < state.residents.length; i++)
          for (let j = i + 1; j < state.residents.length; j++) exchangeNews(state, state.residents[i], state.residents[j]);

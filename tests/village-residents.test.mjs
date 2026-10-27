@@ -245,3 +245,28 @@ test('residents wait instead of walking through the visitor', () => {
    for (let i = 0; i < 8; i++) stepWorld(state, .05);
    assert.ok(penger.position[0] < 4.1, 'penger stays behind the player');
 });
+
+test('a resident who sees the visitor stops and faces them until the visitor walks away', () => {
+   const state = world();
+   const penger = state.residents[0];
+   penger.position = [2, 4];
+   penger.path = [[3, 4], [4, 4], [5, 4], [6, 4]];
+   penger.status = 'moving';
+   penger.behavior = 'exploring';
+   state.player = { mode: 'world', position: [2, 6], heading: 0 };
+   for (let i = 0; i < 40; i++) stepWorld(state, .05);
+   const frozen = penger.position.slice();
+   assert.ok(penger.attending, 'resident attends to the visitor');
+   assert.ok(frozen[0] < 3.2, 'resident stopped near where it first noticed the visitor');
+   assert.ok(Math.abs(penger.heading - Math.atan2(2 - frozen[0], 6 - frozen[1])) < 1e-6, 'faces the visitor');
+   state.player.position = [2, 5.9];           // a tiny shuffle does not count
+   for (let i = 0; i < 20; i++) stepWorld(state, .05);
+   assert.deepEqual(penger.position, frozen);
+   state.player.position = [2.5, 6.5];        // a deliberate step does
+   for (let i = 0; i < 20; i++) stepWorld(state, .05);
+   assert.equal(penger.attending, null);
+   assert.ok(penger.position[0] > frozen[0] + .5, 'resident resumes walking');
+   state.player.mode = 'god';
+   stepWorld(state, .05);
+   assert.equal(penger.released, false);
+});

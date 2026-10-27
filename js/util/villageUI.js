@@ -183,3 +183,60 @@ export function paintDialogue(canvas, state, hovered = -1, hoveredResident = -1)
    context.fillText(state.player?.mode === 'world' ? 'B: back to god view. Stick: walk. Trigger: ask a nearby penguin.' :
       'B: walk into the village. Grip: move a place. Trigger: select a neighbor or ask a question.', 24, 377);
 }
+
+// Village-view conversation card: a 800x400 canvas floating above the penguin that is talking to the player.
+export const talkOptions = [
+   { label: 'How are you?', question: 'How are you?' },
+   { label: 'What are you up to?', question: "What's the plan?" },
+   { label: 'Heard any news?', question: 'Any news?' },
+   { label: 'Bye for now', question: null },
+];
+
+export function talkOptionAt(hit) {
+   if (!hit) return -1;
+   const x = (hit[0] + 1) * 400, y = (1 - hit[1]) * 200;
+   const column = x >= 15 && x <= 395 ? 0 : x >= 405 && x <= 785 ? 1 : -1;
+   const row = y >= 250 && y <= 315 ? 0 : y >= 325 && y <= 390 ? 1 : -1;
+   return column < 0 || row < 0 ? -1 : row * 2 + column;
+}
+
+export function paintTalk(canvas, state, resident, hovered = -1) {
+   const context = canvas.getContext('2d');
+   const accent = 'rgb(' + resident.color.map(value => Math.round(value * 255)).join(',') + ')';
+   context.fillStyle = '#10201a';
+   context.fillRect(0, 0, 800, 400);
+   context.strokeStyle = accent;
+   context.lineWidth = 8;
+   context.strokeRect(4, 4, 792, 392);
+   context.fillStyle = accent;
+   context.font = 'bold 34px sans-serif';
+   context.fillText(resident.name, 24, 46);
+   context.fillStyle = '#9cc7ab';
+   context.font = '22px sans-serif';
+   context.fillText(behaviorNames[resident.behavior], 24 + context.measureText(resident.name).width * 1.25 + 16, 44);
+   const last = resident.ai.history.filter(item => item.role === 'assistant').at(-1);
+   const text = resident.ai.dialogue.status === 'waiting' ? 'Hmm… let me think about that.' : last?.content || resident.reason;
+   context.fillStyle = '#ffffff';
+   context.font = '30px sans-serif';
+   let line = '', y = 92;
+   for (const word of text.split(/\s+/)) {
+      const next = line ? line + ' ' + word : word;
+      if (line && context.measureText(next).width > 752) {
+         context.fillText(line, 24, y);
+         line = word;
+         y += 38;
+         if (y > 210) break;
+      }
+      else line = next;
+   }
+   if (y <= 210) context.fillText(line, 24, y);
+   const waiting = resident.ai.dialogue.status === 'waiting';
+   context.font = '26px sans-serif';
+   for (let i = 0; i < talkOptions.length; i++) {
+      const x = i % 2 ? 405 : 15, top = i < 2 ? 250 : 325;
+      context.fillStyle = waiting && talkOptions[i].question ? '#1f2d27' : hovered === i ? '#497b57' : '#2b4938';
+      context.fillRect(x, top, 380, 65);
+      context.fillStyle = waiting && talkOptions[i].question ? '#6b8176' : '#ffffff';
+      context.fillText((i + 1) + '  ' + talkOptions[i].label, x + 16, top + 42);
+   }
+}

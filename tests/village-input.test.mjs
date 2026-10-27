@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createContext, runInContext, SourceTextModule, SyntheticModule } from 'node:vm';
 import * as cg from '../js/render/core/cg.js';
 import * as village from '../js/util/village.js';
-import { questionAt, questions, paintDialogue, residentAt, speedAt } from '../js/util/villageUI.js';
+import { questionAt, questions, paintDialogue, paintTalk, talkOptions, talkOptionAt, residentAt, speedAt } from '../js/util/villageUI.js';
 
 const claySource = await readFile(new URL('../js/render/core/clay.js', import.meta.url), 'utf8');
 const textureMethods = claySource.slice(claySource.indexOf('   this.setTxtr ='),
@@ -24,6 +24,7 @@ class Node {
    setMatrix(matrix) { this.matrix = matrix; return this; }
    move(...args) { this.matrix = cg.mMultiply(this.matrix, cg.mTranslate(...args)); return this; }
    scale(...args) { this.matrix = cg.mMultiply(this.matrix, cg.mScale(...args)); return this; }
+   turnY(angle) { this.matrix = cg.mMultiply(this.matrix, cg.mRotateY(angle)); return this; }
    turnX(angle) { this.matrix = cg.mMultiply(this.matrix, cg.mRotateX(angle)); return this; }
    getMatrixFromRoot() { return this.getGlobalMatrix(); }
    getGlobalMatrix() {
@@ -33,7 +34,7 @@ class Node {
    info() { return this; }
    dull() { return this; }
    opacity(value) { this.alpha = value; return this; }
-   setTxtr(...args) { this.textureMethods.call(this); return this.setTxtr(...args); }
+   setTxtr(...args) { this.textureMethods.call(this); const node = this.setTxtr(...args); (Node.channels ||= []).push(node._txtr); return node; }
    animate(callback) { this.frame = callback; }
 }
 
@@ -52,6 +53,7 @@ async function setup(allResidents = false) {
          if (x === 0 && y === 0) canvas.commands = [];
          canvas.commands.push(['rect', this.fillStyle, x, y, w, h]);
       },
+      strokeRect() {},
       fillText(text) { canvas.commands.push(['text', text]); },
       measureText(text) { return { width: text.length * 20 }; },
    };
@@ -110,12 +112,13 @@ async function setup(allResidents = false) {
       '../util/villageAI.js': exportsModule({ createVillageAI: () => ({ tick() {}, dispose() { disposed.push('ai'); } }) }),
       '../util/pengerView.js': exportsModule({ createPenger: () => ({ update() {} }) }),
       '../util/villageUI.js': exportsModule({ questions, questionAt, paintDialogue, residentAt, speedAt,
-         createVillageUI: () => ({ update() {}, ask(question) { asked.push(question); askedResidents.push(state.selectedResident); }, dispose() { disposed.push('ui'); } }) }),
+         paintTalk, talkOptions, talkOptionAt, createVillageUI: () => ({ update() {}, ask(question) { asked.push(question); askedResidents.push(state.selectedResident); }, dispose() { disposed.push('ui'); } }) }),
    });
    const lifetime = {};
    await scene.namespace.init(model, {}, lifetime);
    const buttons = { left: Array.from({ length: 7 }, () => ({ pressed: false })),
       right: Array.from({ length: 7 }, () => ({ pressed: false })) };
+   const axes = { left: [0, 0, 0, 0], right: [0, 0, 0, 0] };
    const avatar = { leftController: { matrix: cg.mIdentity() }, rightController: { matrix: cg.mIdentity() } };
    function aim(cell) {
       const { cellSize, width, depth } = state.grid;
@@ -125,7 +128,7 @@ async function setup(allResidents = false) {
    }
    function frame() {
       for (const hand of ['left', 'right'])
-         controllers.namespace.updateController(avatar, { handedness: hand, buttons: buttons[hand], axes: [0, 0, 0, 0] });
+         controllers.namespace.updateController(avatar, { handedness: hand, buttons: buttons[hand], axes: axes[hand] });
       input.update();
       model.time += model.deltaTime;
       model.frame();
@@ -137,7 +140,11 @@ async function setup(allResidents = false) {
       const x = (px / 400 - 1) * .55, y = 1.72 + (1 - py / 190) * .26125;
       avatar.rightController.matrix = cg.mMultiply(cg.mTranslate(x, y - .02, -.1), cg.mRotateX(Math.PI / 4));
    };
-   return { state, input, previous, asked, askedResidents, disposed, uploads, aim, aimPanel, frame, press,
+   const aimTalk = (px, py) => {
+      const x = (px / 400 - 1) * .55, y = .95 + (1 - py / 200) * .275;
+      avatar.rightController.matrix = cg.mMultiply(cg.mTranslate(x, y - .02, -.1), cg.mRotateX(Math.PI / 4));
+   };
+   return { state, input, previous, axes, aimTalk, model, asked, askedResidents, disposed, uploads, aim, aimPanel, frame, press,
       grip(down) { press(down, 'right', 1); },
       leaveXR() { immersive = false; },
       aimQuestion() {
@@ -250,4 +257,57 @@ test('VR speed control toggles once per trigger press without asking or moving a
    assert.equal(s.state.speed, 1);
    assert.deepEqual(s.asked, []);
    assert.equal(s.state.mapRevision, 0);
+});
+
+test('village view: left stick walks, right stick turns the village, and the talk card routes replies', async () => {
+   const s = await setup();
+   s.state.viewRequest = true; s.frame();
+   assert.equal(s.state.player.mode, 'world');
+   s.state.player.position = [10, 10];
+   const start = s.state.player.position.slice();
+   s.axes.left = [0, 0, 0, -1];
+   for (let i = 0; i < 40; i++) s.frame();
+   assert.ok(s.state.player.position[1] < start[1] - 1, 'forward stick walks toward -z when not turned');
+   assert.ok(Math.abs(s.state.player.position[0] - start[0]) < 1e-6);
+   s.axes.left = [0, 0, 0, 0];
+   s.axes.right = [0, 0, 1, 0];
+   for (let i = 0; i < 60; i++) s.frame();       // about 1 s at 1.6 rad/s turns right ~90 degrees
+   s.axes.right = [0, 0, 0, 0];
+   const turned = s.state.player.position.slice();
+   s.axes.left = [0, 0, 0, -1];
+   for (let i = 0; i < 40; i++) s.frame();
+   assert.ok(s.state.player.position[0] > turned[0] + .5, 'after turning right about 90 degrees, forward heads toward +x');
+   assert.ok(Math.abs(s.state.player.position[1] - turned[1]) < .8);
+});
+
+test('village view: a nearby penguin opens a talk card whose options ask, then say goodbye', async () => {
+   const s = await setup();
+   s.state.viewRequest = true; s.frame();
+   s.state.player.position = [10, 10];
+   s.state.residents[0].position = [10, 9];
+   s.frame();
+   const card = s.model.children.find(node => node.alpha === 1);
+   assert.ok(card, 'talk card is visible');
+   s.aimTalk(200, 282); s.press(true); s.press(false);
+   assert.deepEqual(s.asked, ['How are you?']);
+   s.aimTalk(600, 357); s.press(true); s.press(false);
+   assert.match(s.state.residents[0].speech.text, /See you around/);
+   s.frame();
+   assert.ok(!s.model.children.some(node => node.alpha === 1 && node._txtr >= 0), 'card hides after goodbye');
+});
+
+test('returning to god view brings back the head-locked panel and its resident tabs', async () => {
+   const s = await setup(true);
+   s.state.viewRequest = true; s.frame();
+   assert.equal(s.state.player.mode, 'world');
+   s.state.viewRequest = true; s.frame(); s.frame();
+   assert.equal(s.state.player.mode, 'god');
+   assert.ok(s.model.children.some(node => node.alpha === 1 && node._txtr >= 0), 'panel visible');
+   s.aimPanel(392, 110); s.press(true); s.press(false);
+   assert.equal(s.state.selectedResident, 'pip');
+});
+
+test('the god-view panel and the village talk card never share a texture channel', async () => {
+   await setup(true);
+   assert.equal(new Set(Node.channels.slice(-2)).size, 2, 'two canvases need two channels: ' + Node.channels.slice(-2));
 });
