@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createContext, runInContext, SourceTextModule, SyntheticModule } from 'node:vm';
 import * as cg from '../js/render/core/cg.js';
 import * as village from '../js/util/village.js';
-import { questionAt, questions, paintDialogue } from '../js/util/villageUI.js';
+import { questionAt, questions, paintDialogue, residentAt, speedAt } from '../js/util/villageUI.js';
 
 const claySource = await readFile(new URL('../js/render/core/clay.js', import.meta.url), 'utf8');
 const textureMethods = claySource.slice(claySource.indexOf('   this.setTxtr ='),
@@ -30,20 +30,22 @@ class Node {
       return this.parent ? cg.mMultiply(this.parent.getGlobalMatrix(), this.matrix) : this.matrix;
    }
    color() { return this; }
+   info() { return this; }
    dull() { return this; }
    opacity(value) { this.alpha = value; return this; }
    setTxtr(...args) { this.textureMethods.call(this); return this.setTxtr(...args); }
    animate(callback) { this.frame = callback; }
 }
 
-async function setup() {
+async function setup(allResidents = false) {
    const state = JSON.parse(await readFile(new URL('../js/scenes/village.json', import.meta.url)));
+   if (!allResidents) state.residents = state.residents.slice(0, 1);
    state.grid = { width: 20, depth: 20, cellSize: .075 };
    state.regions = [{ id: 'pond', kind: 'water', cell: [4, 4], size: 2 }];
    state.obstacles = [];
-   state.rabbit.position = [1, 4];
-   state.rabbit.path = [];
-   const root = new Node(), asked = [], disposed = [], uploads = [];
+   state.residents[0].position = [1, 4];
+   state.residents[0].path = [];
+   const root = new Node(), asked = [], askedResidents = [], disposed = [], uploads = [];
    const canvas = { commands: [], getContext: () => drawing };
    const drawing = {
       fillRect(x, y, w, h) {
@@ -105,8 +107,8 @@ async function setup() {
       '../util/village.js': exportsModule({ ...village, stepWorld() {} }),
       '../util/villageAI.js': exportsModule({ createVillageAI: () => ({ tick() {}, dispose() { disposed.push('ai'); } }) }),
       '../util/pengerView.js': exportsModule({ createPenger: () => ({ update() {} }) }),
-      '../util/villageUI.js': exportsModule({ questions, questionAt, paintDialogue,
-         createVillageUI: () => ({ update() {}, ask(question) { asked.push(question); }, dispose() { disposed.push('ui'); } }) }),
+      '../util/villageUI.js': exportsModule({ questions, questionAt, paintDialogue, residentAt, speedAt,
+         createVillageUI: () => ({ update() {}, ask(question) { asked.push(question); askedResidents.push(state.selectedResident); }, dispose() { disposed.push('ui'); } }) }),
    });
    const lifetime = {};
    await scene.namespace.init(model, {}, lifetime);
@@ -129,12 +131,15 @@ async function setup() {
          if (node._txtr >= 0 && node.alpha !== 0) upload(node._txtr);
    }
    const press = (down, hand = 'right', button = 0) => { buttons[hand][button].pressed = down; frame(); };
-   return { state, input, previous, asked, disposed, uploads, aim, frame, press,
+   const aimPanel = (px, py) => {
+      const x = (px / 400 - 1) * .55, y = 1.72 + (1 - py / 190) * .26125;
+      avatar.rightController.matrix = cg.mMultiply(cg.mTranslate(x, y - .02, -.1), cg.mRotateX(Math.PI / 4));
+   };
+   return { state, input, previous, asked, askedResidents, disposed, uploads, aim, aimPanel, frame, press,
       grip(down) { press(down, 'right', 1); },
       leaveXR() { immersive = false; },
       aimQuestion() {
-         const x = (140 / 400 - 1) * .55, y = 1.72 + (1 - 331 / 190) * .26125;
-         avatar.rightController.matrix = cg.mMultiply(cg.mTranslate(x, y - .02, -.1), cg.mRotateX(Math.PI / 4));
+         aimPanel(140, 331);
       },
       dispose() { scene.namespace.deinit(model, {}, lifetime); },
    };
@@ -179,18 +184,18 @@ test('VR button hover reaches the displayed texture after the initial frame', as
    const initialUploads = s.uploads.length;
    s.aimQuestion(); s.frame();
    assert.ok(s.uploads.length > initialUploads, 'hover must upload a new canvas frame');
-   assert.ok(s.uploads.at(-1).some(command => command[0] === 'rect' && command[1] === '#497b57' && command[2] === 20));
+   assert.ok(s.uploads.at(-1).some(command => command[0] === 'rect' && command[1] === '#497b57' && command[2] === 20 && command[3] === 300));
 });
 
 test('VR dialogue visibly updates from waiting to the received answer', async () => {
    const s = await setup();
    s.aimQuestion(); s.frame(); s.press(true);
    assert.deepEqual(s.asked, [questions[0]]);
-   s.state.ai.dialogue.status = 'waiting'; s.frame();
+   s.state.residents[0].ai.dialogue.status = 'waiting'; s.frame();
    const displayedText = () => s.uploads.at(-1).filter(command => command[0] === 'text').map(command => command[1]).join(' ');
    assert.ok(displayedText().includes('One moment… gathering my very important penguin thoughts.'));
-   s.state.ai.dialogue.status = 'idle';
-   s.state.ai.history.push({ role: 'assistant', content: "I'm a little thirsty." });
+   s.state.residents[0].ai.dialogue.status = 'idle';
+   s.state.residents[0].ai.history.push({ role: 'assistant', content: "I'm a little thirsty." });
    s.frame();
    assert.ok(displayedText().includes("I'm a little thirsty."));
 });
@@ -222,4 +227,25 @@ test('scene disposal restores input callbacks without overwriting a newer scene 
    for (const name of ['onDrag', 'onRelease', 'onClick', 'onMove', 'onDoublePress'])
       assert.equal(s.input[name], s.previous[name]);
    assert.deepEqual(s.disposed, ['ai', 'ui']);
+});
+
+test('VR trigger selects a resident and routes the next question to that resident', async () => {
+   const s = await setup(true);
+   s.aimPanel(392, 110); s.press(true); s.press(false);
+   assert.equal(s.state.selectedResident, 'pip');
+   assert.deepEqual(s.asked, []);
+   s.aimQuestion(); s.press(true); s.press(false);
+   assert.deepEqual(s.askedResidents, ['pip']);
+   s.aimPanel(644, 110); s.press(true); s.press(false);
+   assert.equal(s.state.selectedResident, 'mox');
+});
+
+test('VR speed control toggles once per trigger press without asking or moving a region', async () => {
+   const s = await setup();
+   s.aimPanel(710, 27); s.press(true); s.frame();
+   assert.equal(s.state.speed, 3);
+   s.press(false); s.press(true); s.press(false);
+   assert.equal(s.state.speed, 1);
+   assert.deepEqual(s.asked, []);
+   assert.equal(s.state.mapRevision, 0);
 });

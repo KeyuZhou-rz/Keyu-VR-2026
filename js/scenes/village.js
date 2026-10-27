@@ -1,9 +1,9 @@
 import * as cg from '../render/core/cg.js';
 import { ControllerBeam, buttonState } from '../render/core/controllerInput.js';
-import { stepWorld, isInRegion, canPlaceRegion, moveRegion } from '../util/village.js';
+import { stepWorld, isInRegion, canPlaceRegion, moveRegion, selectedResident } from '../util/village.js';
 import { createVillageAI } from '../util/villageAI.js';
 import { createPenger } from '../util/pengerView.js';
-import { createVillageUI, paintDialogue, questions, questionAt } from '../util/villageUI.js';
+import { createVillageUI, paintDialogue, questions, questionAt, residentAt, speedAt } from '../util/villageUI.js';
 
 export const init = async (model, ctx, ctxForever = {}) => {
    ctxForever.disposeVillage?.();
@@ -11,7 +11,8 @@ export const init = async (model, ctx, ctxForever = {}) => {
    if (!response.ok) throw new Error('Cannot load village.json: ' + response.status);
    const state = await response.json();
    window.villageState = state;
-   const ai = createVillageAI(state), ui = createVillageUI(state, ai);
+   const brains = new Map(state.residents.map(resident => [resident.id, createVillageAI(state, { resident })]));
+   const ui = createVillageUI(state, { chat: question => brains.get(selectedResident(state).id).chat(question) });
 
    const board = model.add().move(0, .8, -1.5);
    const { width, depth, cellSize } = state.grid;
@@ -58,8 +59,13 @@ export const init = async (model, ctx, ctxForever = {}) => {
    drawRegions();
    let mapRevision = state.mapRevision;
    const preview = board.add('square').opacity(0);
-   const route = board.add(), penger = createPenger(board, cellSize * .7);
-   let pathVersion = -1, drag = null, gripping = false;
+   const route = board.add();
+   const views = new Map(state.residents.map(resident => [resident.id, {
+      penger: createPenger(board, cellSize * 1.4, resident.color, 'village-' + resident.id),
+      name: board.add('label').info(resident.name).color(resident.color).dull(),
+      speech: board.add('label').info(' ').color([1, 1, 1]).dull(),
+   }]));
+   let pathVersion = '', drag = null, gripping = false, panelHit = null, hoveredResident = -1;
 
    const canvas = document.createElement('canvas');
    canvas.width = 800;
@@ -68,13 +74,17 @@ export const init = async (model, ctx, ctxForever = {}) => {
    const panel = model.add('square').setTxtr(canvas, 10, false).color([1, 1, 1]).dull();
    const beam = new ControllerBeam(model, 'right');
    const updatePointer = () => {
+      panelHit = null;
+      hoveredResident = -1;
       beam.isEnabled = window.isXR();
       beam.update();
       panel.opacity(beam.isEnabled ? 1 : 0);
       if (!beam.isEnabled) return -1;
       const head = cg.mMultiply(clay.inverseRootMatrix, clay.pose.transform.matrix);
       panel.setMatrix(head).move(0, .12, -1.3).scale(.55, .26125, 1);
-      return questionAt(beam.hitRect(panel.getGlobalMatrix()));
+      panelHit = beam.hitRect(panel.getGlobalMatrix());
+      hoveredResident = residentAt(panelHit);
+      return questionAt(panelHit);
    };
    const pointedCell = () => {
       const hit = beam.hitPoint(surface.getGlobalMatrix(), !!drag);
@@ -87,7 +97,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
    };
    const finishDrag = commit => {
       if (!drag) return;
-      if (commit) moveRegion(state, drag.id, drag.cell);
+      if (commit) moveRegion(state, drag.id, drag.cell, 'player');
       const region = state.regions.find(region => region.id === drag.id);
       const [x, z] = position(region.cell);
       regionNodes.get(drag.id).identity().move(x, 0, z);
@@ -98,6 +108,12 @@ export const init = async (model, ctx, ctxForever = {}) => {
          if (hand !== 'right') return;
          const hovered = updatePointer();
          if (!beam.isEnabled) return;
+         if (drag) return;
+         if (hoveredResident >= 0 && hoveredResident < state.residents.length) {
+            state.selectedResident = state.residents[hoveredResident].id;
+            return;
+         }
+         if (speedAt(panelHit)) { state.speed = state.speed === 1 ? 3 : 1; return; }
          if (hovered >= 0 && !drag) ui.ask(questions[hovered]);
       },
       onDrag() {},
@@ -115,16 +131,16 @@ export const init = async (model, ctx, ctxForever = {}) => {
       finishDrag(false);
       for (const name in handlers)
          if (inputEvents[name] === handlers[name]) inputEvents[name] = previousInput[name];
-      ai.dispose();
+      for (const ai of brains.values()) ai.dispose();
       ui.dispose();
    };
    let previousPaint = '', lastUI = 0;
    model.animate(() => {
-      const dt = Math.min(model.deltaTime, .05), rabbit = state.rabbit;
+      const dt = Math.min(model.deltaTime, .05), resident = selectedResident(state);
       const hovered = updatePointer(), inVR = beam.isEnabled;
       if (inVR) {
          const grip = !!buttonState.right[1]?.pressed;
-         if (grip && !gripping && hovered < 0) {
+         if (grip && !gripping && !panelHit) {
             const cell = pointedCell();
             const region = cell && state.regions.find(region => isInRegion(cell.map(value => Math.round(value)), region));
             if (region) drag = { id: region.id, cell: region.cell.slice(),
@@ -138,8 +154,13 @@ export const init = async (model, ctx, ctxForever = {}) => {
          finishDrag(false);
          gripping = false;
       }
-      stepWorld(state, dt);
-      ai.tick();
+      let remaining = dt * state.speed;
+      while (remaining > 1e-9) {
+         const step = Math.min(remaining, .05);
+         stepWorld(state, step);
+         remaining -= step;
+      }
+      for (const ai of brains.values()) ai.tick();
       if (mapRevision !== state.mapRevision) {
          mapRevision = state.mapRevision;
          drawRegions();
@@ -154,19 +175,26 @@ export const init = async (model, ctx, ctxForever = {}) => {
                 .scale(region.size * cellSize / 2, region.size * cellSize / 2, 1)
                 .color(canPlaceRegion(state, drag.id, drag.cell) ? [.3, 1, .4] : [1, .15, .1]);
       }
-      if (pathVersion !== rabbit.pathVersion) {
-         pathVersion = rabbit.pathVersion;
+      const version = resident.id + ':' + resident.pathVersion;
+      if (pathVersion !== version) {
+         pathVersion = version;
          while (route.nChildren()) route.remove(0);
-         for (const cell of rabbit.path)
+         for (const cell of resident.path)
             box(route, cell, .015, cellSize * .22, .006, cellSize * .22, [1, .85, .2]);
       }
-      const [x, z] = position(rabbit.position);
-      penger.update(x, z, rabbit.heading, rabbit.status === 'moving', dt);
-      const paintKey = JSON.stringify([rabbit.behavior, Math.round(rabbit.needs.thirst * 100),
-         Math.round(rabbit.needs.fatigue * 100), rabbit.reason, state.ai.history.at(-1), state.ai.dialogue.status, hovered]);
+      for (const actor of state.residents) {
+         const [x, z] = position(actor.position), view = views.get(actor.id);
+         view.penger.update(x, z, actor.heading, actor.status === 'moving', dt * state.speed);
+         view.name.identity().move(x, .13, z).scale(.013).info(actor.id === resident.id ? '[' + actor.name + ']' : actor.name);
+         view.speech.identity().move(x, .18, z).scale(.0035)
+            .info(actor.speech.until > state.time ? actor.speech.text.slice(0, 52) : ' ');
+      }
+      const paintKey = JSON.stringify([resident.id, resident.behavior, Math.round(resident.needs.thirst * 100),
+         Math.round(resident.needs.fatigue * 100), Math.round(resident.trust * 100), resident.reason,
+         resident.ai.history.at(-1), resident.ai.dialogue.status, state.events.at(-1), state.speed, hovered, hoveredResident]);
       if (inVR && paintKey !== previousPaint) {
          previousPaint = paintKey;
-         paintDialogue(canvas, state, hovered);
+         paintDialogue(canvas, state, hovered, hoveredResident);
       }
       if (model.time >= lastUI) {
          lastUI = model.time + .2;

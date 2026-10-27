@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { blockedCells, canPlaceRegion, moveRegion, perceive, applyPlan, stepWorld,
-   stepRabbit, planOptions, snapshot, interactionCells } from '../js/util/village.js';
+   stepResident, planOptions, snapshot, interactionCells } from '../js/util/village.js';
 import { createVillageAI } from '../js/util/villageAI.js';
 import * as cg from '../js/render/core/cg.js';
 
@@ -11,19 +11,20 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const response = value => ({ ok: true, json: async () => ({ response: JSON.stringify(value) }) });
 function world() {
    const state = clone(initial);
+   state.residents = state.residents.slice(0, 1);
    state.grid = { width: 20, depth: 20, cellSize: .075 };
    state.regions = [{ id: 'pond', name: 'Pond', kind: 'water', tags: ['water'], cell: [4, 4], size: 2 }];
    state.obstacles = [];
-   state.rabbit.position = [1, 4];
-   state.rabbit.speed = 2;
-   state.rabbit.sight = 2;
-   state.rabbit.needs.thirst = .9;
-   state.rabbit.known = [{ ...clone(state.regions[0]), status: 'present' }];
+   state.residents[0].position = [1, 4];
+   state.residents[0].speed = 2;
+   state.residents[0].sight = 2;
+   state.residents[0].needs.thirst = .9;
+   state.residents[0].known = [{ ...clone(state.regions[0]), status: 'present' }];
    return state;
 }
 function reachMissing(state) {
-   for (let i = 0; i < 100 && !state.rabbit.surprise; i++) stepWorld(state, .05);
-   assert.ok(state.rabbit.surprise, 'expected an old-location failure');
+   for (let i = 0; i < 100 && !state.residents[0].surprise; i++) stepWorld(state, .05);
+   assert.ok(state.residents[0].surprise, 'expected an old-location failure');
 }
 function movePond(state) {
    assert.ok(applyPlan(state, { action: 'seekWater', target: 'pond' }));
@@ -31,12 +32,12 @@ function movePond(state) {
 }
 
 test('moving a place commits one world event without changing any agent knowledge', () => {
-   const state = world(), before = clone(state.rabbit);
+   const state = world(), before = clone(state.residents[0]);
    assert.ok(moveRegion(state, 'pond', [13, 1]));
-   assert.deepEqual(state.rabbit, before);
+   assert.deepEqual(state.residents[0], before);
    assert.equal(state.mapRevision, 1);
    assert.deepEqual(state.events[0], { type: 'ObjectMoved', time: 0, target: 'pond', from: [4, 4], to: [13, 1] });
-   assert.deepEqual(state.rabbit.known[0].cell, [4, 4]);
+   assert.deepEqual(state.residents[0].known[0].cell, [4, 4]);
    assert.ok(!blockedCells(state).has('4,4'));
    assert.ok(blockedCells(state).has('13,1'));
 });
@@ -70,8 +71,8 @@ test('invalid placement rejects bounds, overlap, fixed obstacles, the actor and 
 
 test('a moving actor reserves the next safe node for finishing its current segment', () => {
    const state = world();
-   state.rabbit.position = [1.1, 4];
-   state.rabbit.path = [[2, 4], [3, 4]];
+   state.residents[0].position = [1.1, 4];
+   state.residents[0].path = [[2, 4], [3, 4]];
    assert.equal(canPlaceRegion(state, 'pond', [2, 4]), false);
 });
 
@@ -79,13 +80,13 @@ test('old-address arrival records missing, invalidates belief and does not inven
    const state = world();
    movePond(state);
    reachMissing(state);
-   assert.deepEqual(state.rabbit.position, [3, 4]);
-   assert.equal(state.rabbit.known[0].status, 'missing');
-   assert.deepEqual(state.rabbit.known[0].cell, [4, 4]);
-   assert.equal(state.rabbit.behavior, 'stuck');
-   const memory = state.rabbit.memories.find(item => item.type === 'expectedObjectMissing');
+   assert.deepEqual(state.residents[0].position, [3, 4]);
+   assert.equal(state.residents[0].known[0].status, 'missing');
+   assert.deepEqual(state.residents[0].known[0].cell, [4, 4]);
+   assert.equal(state.residents[0].behavior, 'stuck');
+   const memory = state.residents[0].memories.find(item => item.type === 'expectedObjectMissing');
    assert.deepEqual(memory.expectedCell, [4, 4]);
-   assert.equal(state.rabbit.surprise.memoryId, memory.id);
+   assert.equal(state.residents[0].surprise.memoryId, memory.id);
    assert.ok(!planOptions(state).some(option => option.target === 'pond'));
    const context = snapshot(state);
    assert.ok(!('events' in context));
@@ -95,7 +96,7 @@ test('old-address arrival records missing, invalidates belief and does not inven
 test('path failure alone cannot mark a remembered place missing', () => {
    const state = world();
    state.regions[0].cell = [4, 3];
-   state.rabbit.known[0].cell = [4, 3];
+   state.residents[0].known[0].cell = [4, 3];
    for (let x = 0; x < 20; x++)
       for (let z = 0; z < 20; z++)
          if (z !== 4) state.obstacles.push([x, z]);
@@ -103,60 +104,60 @@ test('path failure alone cannot mark a remembered place missing', () => {
    assert.ok(applyPlan(state, { action: 'seekWater', target: 'pond' }));
    assert.ok(moveRegion(state, 'forest', [3, 4]));
    for (let i = 0; i < 40; i++) stepWorld(state, .05);
-   assert.equal(state.rabbit.known.find(item => item.id === 'pond').status, 'present');
-   assert.ok(!state.rabbit.memories.some(item => item.type === 'expectedObjectMissing'));
-   assert.equal(state.rabbit.behavior, 'stuck');
+   assert.equal(state.residents[0].known.find(item => item.id === 'pond').status, 'present');
+   assert.ok(!state.residents[0].memories.some(item => item.type === 'expectedObjectMissing'));
+   assert.equal(state.residents[0].behavior, 'stuck');
 });
 
 test('moving the water during drinking immediately stops need relief', () => {
    const state = world();
-   state.rabbit.position = [3, 4];
-   state.rabbit.behavior = 'drinking';
-   state.rabbit.status = 'arrived';
-   state.rabbit.target = 'pond';
-   state.rabbit.plan = { action: 'seekWater', target: 'pond' };
-   const thirst = state.rabbit.needs.thirst;
+   state.residents[0].position = [3, 4];
+   state.residents[0].behavior = 'drinking';
+   state.residents[0].status = 'arrived';
+   state.residents[0].target = 'pond';
+   state.residents[0].plan = { action: 'seekWater', target: 'pond' };
+   const thirst = state.residents[0].needs.thirst;
    assert.ok(moveRegion(state, 'pond', [13, 1]));
    stepWorld(state, .05);
-   assert.ok(state.rabbit.needs.thirst >= thirst);
-   assert.equal(state.rabbit.known[0].status, 'missing');
-   assert.equal(state.rabbit.behavior, 'stuck');
+   assert.ok(state.residents[0].needs.thirst >= thirst);
+   assert.equal(state.residents[0].known[0].status, 'missing');
+   assert.equal(state.residents[0].behavior, 'stuck');
 });
 
 test('map changes replan at a grid node without snapping a moving character', () => {
    const state = world();
    assert.ok(applyPlan(state, { action: 'seekWater', target: 'pond' }));
-   stepRabbit(state, .1);
-   assert.deepEqual(state.rabbit.position, [1.2, 4]);
+   stepResident(state, .1);
+   assert.deepEqual(state.residents[0].position, [1.2, 4]);
    assert.ok(moveRegion(state, 'pond', [13, 1]));
    for (let i = 0; i < 12; i++) {
-      const before = state.rabbit.position.slice();
+      const before = state.residents[0].position.slice();
       stepWorld(state, .05);
-      assert.ok(Math.hypot(state.rabbit.position[0] - before[0], state.rabbit.position[1] - before[1]) <= .1000001);
+      assert.ok(Math.hypot(state.residents[0].position[0] - before[0], state.residents[0].position[1] - before[1]) <= .1000001);
    }
-   assert.equal(state.rabbit.routeRevision, state.mapRevision);
+   assert.equal(state.residents[0].routeRevision, state.mapRevision);
 });
 
 test('rediscovery updates the same identity only after the new location is observed', () => {
    const state = world();
    movePond(state);
    reachMissing(state);
-   state.rabbit.position = [12, 1];
+   state.residents[0].position = [12, 1];
    perceive(state);
-   assert.equal(state.rabbit.known.length, 1);
-   assert.equal(state.rabbit.known[0].status, 'present');
-   assert.deepEqual(state.rabbit.known[0].cell, [13, 1]);
-   assert.ok(state.rabbit.memories.some(item => item.type === 'rediscovered'));
+   assert.equal(state.residents[0].known.length, 1);
+   assert.equal(state.residents[0].known[0].status, 'present');
+   assert.deepEqual(state.residents[0].known[0].cell, [13, 1]);
+   assert.ok(state.residents[0].memories.some(item => item.type === 'rediscovered'));
 });
 
 test('an absent forest is noticed while visiting its remembered ground', () => {
    const state = world();
    state.regions.push({ id: 'forest', name: 'Woods', kind: 'forest', cell: [1, 3], size: 2, tags: ['forest'], obstacles: [] });
-   state.rabbit.known.push({ ...clone(state.regions[1]), status: 'present' });
+   state.residents[0].known.push({ ...clone(state.regions[1]), status: 'present' });
    assert.ok(moveRegion(state, 'forest', [10, 10]));
    perceive(state);
-   assert.equal(state.rabbit.known[1].status, 'missing');
-   assert.equal(state.rabbit.surprise.target, 'forest');
+   assert.equal(state.residents[0].known[1].status, 'missing');
+   assert.equal(state.residents[0].surprise.target, 'forest');
 });
 
 test('after missing a moved pond, autonomous search can rediscover it and drink at its actual shore', () => {
@@ -166,11 +167,11 @@ test('after missing a moved pond, autonomous search can rediscover it and drink 
    let drank = false;
    for (let i = 0; i < 8000 && !drank; i++) {
       stepWorld(state, .05);
-      drank = state.rabbit.behavior === 'drinking';
+      drank = state.residents[0].behavior === 'drinking';
    }
    assert.ok(drank);
-   assert.deepEqual(state.rabbit.known[0].cell, [13, 1]);
-   assert.ok(interactionCells(state, state.regions[0]).some(cell => String(cell) === String(state.rabbit.position)));
+   assert.deepEqual(state.residents[0].known[0].cell, [13, 1]);
+   assert.ok(interactionCells(state, state.regions[0]).some(cell => String(cell) === String(state.residents[0].position)));
 });
 
 test('AI reacts to an observed absence immediately and only once, with no hidden relocation data', async () => {
@@ -189,8 +190,8 @@ test('AI reacts to an observed absence immediately and only once, with no hidden
    reachMissing(state);
    assert.ok(state.time < 12);
    await ai.tick();
-   assert.equal(state.ai.history.at(-1).source, 'ai');
-   assert.equal(state.rabbit.surprise.handled, true);
+   assert.equal(state.residents[0].ai.history.at(-1).source, 'ai');
+   assert.equal(state.residents[0].surprise.handled, true);
    assert.equal(reactionContext.known[0].status, 'missing');
    assert.deepEqual(reactionContext.known[0].cell, [4, 4]);
    assert.ok(!('events' in reactionContext));
@@ -206,10 +207,10 @@ test('AI outage keeps a factual reaction and lets the actor continue searching',
    reachMissing(state);
    const ai = createVillageAI(state, { fetchImpl: async () => { throw new Error('offline'); } });
    await ai.tick();
-   assert.equal(state.ai.history.at(-1).source, 'state');
-   assert.ok(state.ai.history.at(-1).content.includes('used to be here'));
+   assert.equal(state.residents[0].ai.history.at(-1).source, 'state');
+   assert.ok(state.residents[0].ai.history.at(-1).content.includes('used to be here'));
    for (let i = 0; i < 50; i++) stepWorld(state, .05);
-   assert.notDeepEqual(state.rabbit.position, [3, 4]);
+   assert.notDeepEqual(state.residents[0].position, [3, 4]);
    ai.dispose();
 });
 
@@ -221,8 +222,8 @@ test('relocation during an AI request rejects the outdated plan', async () => {
    assert.ok(moveRegion(state, 'pond', [13, 1]));
    finish(response({ action: 'seekWater', target: 'pond' }));
    await request;
-   assert.equal(state.ai.planner.status, 'stale');
-   assert.equal(state.rabbit.plan, null);
+   assert.equal(state.residents[0].ai.planner.status, 'stale');
+   assert.equal(state.residents[0].plan, null);
    ai.dispose();
 });
 

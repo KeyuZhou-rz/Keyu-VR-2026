@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "time": 0,
   "grid": {
     "width": 24,
@@ -282,49 +282,202 @@
       6
     ]
   ],
-  "rabbit": {
-    "name": "Penger",
-    "position": [
-      3,
-      15
-    ],
-    "speed": 3,
-    "heading": 0,
-    "target": null,
-    "path": [],
-    "status": "idle",
-    "behavior": "exploring",
-    "reason": "New neighborhood, same excellent waddle. Let's see what's out there.",
-    "needs": {
-      "thirst": 0.35,
-      "fatigue": 0.15
-    },
-    "sight": 4,
-    "known": [],
-    "explored": [],
-    "memories": [],
-    "memoryCount": 0,
-    "intent": 0,
-    "pathVersion": 0,
-    "pendingPlan": null,
-    "nextSense": 0,
-    "nextDecision": 0,
-    "plan": null,
-    "routeRevision": 0,
-    "needsReplan": false,
-    "surprise": null
-  },
-  "ai": {
-    "planner": {
-      "status": "idle",
-      "detail": ""
-    },
-    "dialogue": {
-      "status": "idle",
-      "detail": ""
-    },
-    "history": []
-  },
   "mapRevision": 0,
-  "events": []
+  "events": [],
+  "selectedResident": "penger",
+  "speed": 1,
+  "restQueues": {},
+  "socialCooldowns": {},
+  "nextSocial": 0,
+  "residents": [
+    {
+      "name": "Penger",
+      "position": [
+        3,
+        15
+      ],
+      "speed": 3,
+      "heading": 0,
+      "target": null,
+      "path": [],
+      "status": "idle",
+      "behavior": "exploring",
+      "reason": "New neighborhood, same excellent waddle. Let's see what's out there.",
+      "needs": {
+        "thirst": 0.35,
+        "fatigue": 0.15
+      },
+      "sight": 4,
+      "known": [],
+      "explored": [],
+      "memories": [],
+      "memoryCount": 0,
+      "intent": 0,
+      "pathVersion": 0,
+      "pendingPlan": null,
+      "nextSense": 0,
+      "nextDecision": 0,
+      "plan": null,
+      "routeRevision": 0,
+      "needsReplan": false,
+      "surprise": null,
+      "id": "penger",
+      "color": [
+        0.3,
+        1,
+        0.45
+      ],
+      "personality": "Curious and cheeky; treats little discoveries as grand expeditions.",
+      "ai": {
+        "planner": {
+          "status": "idle",
+          "detail": ""
+        },
+        "dialogue": {
+          "status": "idle",
+          "detail": ""
+        },
+        "history": []
+      },
+      "trust": 1,
+      "disturbances": [],
+      "avoid": {},
+      "lastDisturbed": -100,
+      "lastProtest": -100,
+      "waitingFor": null,
+      "waitTime": 0,
+      "segmentFrom": null,
+      "yielding": false,
+      "speech": {
+        "text": "",
+        "until": 0
+      }
+    },
+    {
+      "name": "Pip",
+      "position": [
+        5,
+        16
+      ],
+      "speed": 3,
+      "heading": 0,
+      "target": null,
+      "path": [],
+      "status": "idle",
+      "behavior": "exploring",
+      "reason": "New neighborhood, same excellent waddle. Let's see what's out there.",
+      "needs": {
+        "thirst": 0.25,
+        "fatigue": 0.82
+      },
+      "sight": 4,
+      "known": [],
+      "explored": [],
+      "memories": [],
+      "memoryCount": 0,
+      "intent": 0,
+      "pathVersion": 0,
+      "pendingPlan": null,
+      "nextSense": 0,
+      "nextDecision": 0,
+      "plan": null,
+      "routeRevision": 0,
+      "needsReplan": false,
+      "surprise": null,
+      "id": "pip",
+      "color": [
+        1,
+        0.72,
+        0.25
+      ],
+      "personality": "Warm and chatty, with an excellent appreciation for a good nap.",
+      "ai": {
+        "planner": {
+          "status": "idle",
+          "detail": ""
+        },
+        "dialogue": {
+          "status": "idle",
+          "detail": ""
+        },
+        "history": []
+      },
+      "trust": 1,
+      "disturbances": [],
+      "avoid": {},
+      "lastDisturbed": -100,
+      "lastProtest": -100,
+      "waitingFor": null,
+      "waitTime": 0,
+      "segmentFrom": null,
+      "yielding": false,
+      "speech": {
+        "text": "",
+        "until": 0
+      }
+    },
+    {
+      "name": "Mox",
+      "position": [
+        6,
+        15
+      ],
+      "speed": 3,
+      "heading": 0,
+      "target": null,
+      "path": [],
+      "status": "idle",
+      "behavior": "exploring",
+      "reason": "New neighborhood, same excellent waddle. Let's see what's out there.",
+      "needs": {
+        "thirst": 0.55,
+        "fatigue": 0.85
+      },
+      "sight": 4,
+      "known": [],
+      "explored": [],
+      "memories": [],
+      "memoryCount": 0,
+      "intent": 0,
+      "pathVersion": 0,
+      "pendingPlan": null,
+      "nextSense": 0,
+      "nextDecision": 0,
+      "plan": null,
+      "routeRevision": 0,
+      "needsReplan": false,
+      "surprise": null,
+      "id": "mox",
+      "color": [
+        0.45,
+        0.72,
+        1
+      ],
+      "personality": "Dry humor, observant, and rather protective of a peaceful routine.",
+      "ai": {
+        "planner": {
+          "status": "idle",
+          "detail": ""
+        },
+        "dialogue": {
+          "status": "idle",
+          "detail": ""
+        },
+        "history": []
+      },
+      "trust": 1,
+      "disturbances": [],
+      "avoid": {},
+      "lastDisturbed": -100,
+      "lastProtest": -100,
+      "waitingFor": null,
+      "waitTime": 0,
+      "segmentFrom": null,
+      "yielding": false,
+      "speech": {
+        "text": "",
+        "until": 0
+      }
+    }
+  ]
 }

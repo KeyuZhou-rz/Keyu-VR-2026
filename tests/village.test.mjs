@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { findPath, isWalkable, interactionCells, perceive, planOptions, validatePlan,
-   applyPlan, stepRabbit, stepWorld, snapshot, remember } from '../js/util/village.js';
+   applyPlan, stepResident, stepWorld, snapshot, remember } from '../js/util/village.js';
 import { createVillageAI } from '../js/util/villageAI.js';
 import { createPenger } from '../js/util/pengerView.js';
 import { questionAt } from '../js/util/villageUI.js';
 
 const initialJSON = await readFile(new URL('../js/scenes/village.json', import.meta.url), 'utf8');
-const createState = () => JSON.parse(initialJSON);
+const createState = () => { const state = JSON.parse(initialJSON); state.residents = state.residents.slice(0, 1); return state; };
 const clone = value => JSON.parse(JSON.stringify(value));
 const response = value => ({ ok: true, json: async () => ({ response: JSON.stringify(value) }) });
 const run = (state, seconds) => { for (let i = 0; i < Math.round(seconds * 20); i++) stepWorld(state, .05); };
@@ -27,7 +27,7 @@ test('complex map has forests, two blocked water bodies and a house with reachab
    assert.equal(state.regions.filter(region => region.kind === 'water').length, 2);
    assert.ok(state.regions.filter(region => region.kind === 'forest').length >= 2);
    for (const region of state.regions) {
-      const path = findPath(state, state.rabbit.position, region);
+      const path = findPath(state, state.residents[0].position, region);
       checkPath(state, path);
       assert.ok(interactionCells(state, region).some(cell => String(cell) === String(path.at(-1))));
       if (['water', 'house'].includes(region.kind)) assert.equal(isWalkable(state, region.cell), false);
@@ -63,10 +63,10 @@ test('invalid or unreachable starts return no path', () => {
 test('perception and AI snapshot contain only discovered locations and copied observations', () => {
    const state = createState();
    perceive(state);
-   assert.deepEqual(state.rabbit.known.map(region => region.id), ['home']);
+   assert.deepEqual(state.residents[0].known.map(region => region.id), ['home']);
    assert.ok(!JSON.stringify(snapshot(state)).includes('north-lake'));
    assert.ok(!('obstacles' in snapshot(state)));
-   state.rabbit.known[0].cell[0] = 99;
+   state.residents[0].known[0].cell[0] = 99;
    assert.equal(state.regions[0].cell[0], 1);
 });
 
@@ -74,25 +74,25 @@ test('autonomous simulation explores, discovers, drinks and rests without any AI
    const state = createState(), behaviors = new Set();
    let drank = false, rested = false;
    for (let i = 0; i < 6000; i++) {
-      const before = clone(state.rabbit.needs);
+      const before = clone(state.residents[0].needs);
       stepWorld(state, .05);
-      behaviors.add(state.rabbit.behavior);
-      if (state.rabbit.needs.thirst < before.thirst) drank = true;
-      if (state.rabbit.needs.fatigue < before.fatigue) rested = true;
-      assert.ok(isWalkable(state, state.rabbit.position.map(Math.round)));
+      behaviors.add(state.residents[0].behavior);
+      if (state.residents[0].needs.thirst < before.thirst) drank = true;
+      if (state.residents[0].needs.fatigue < before.fatigue) rested = true;
+      assert.ok(isWalkable(state, state.residents[0].position.map(Math.round)));
    }
    for (const behavior of ['exploring', 'seekingWater', 'drinking', 'seekingHome', 'resting'])
       assert.ok(behaviors.has(behavior), behavior + ' never occurred');
    assert.ok(drank && rested);
-   assert.equal(state.rabbit.known.length, state.regions.length);
-   assert.ok(state.rabbit.memories.length <= 24);
-   assert.ok(state.rabbit.memoryCount < 200, 'satisfied needs must not produce repeated drink/rest events');
+   assert.equal(state.residents[0].known.length, state.regions.length);
+   assert.ok(state.residents[0].memories.length <= 24);
+   assert.ok(state.residents[0].memoryCount < 200, 'satisfied needs must not produce repeated drink/rest events');
 });
 
 test('urgent needs reject unknown, irrelevant and fabricated AI actions without mutation', () => {
    const state = createState();
-   state.rabbit.known = clone(state.regions);
-   state.rabbit.needs.thirst = .9;
+   state.residents[0].known = clone(state.regions);
+   state.residents[0].needs.thirst = .9;
    const before = clone(state);
    for (const plan of [null, {}, { action: 'teleport' }, { action: 'seekWater', target: 'imaginary' },
                        { action: 'seekHome', target: 'home' }, { action: 'explore', cell: [0, 0] }]) {
@@ -109,20 +109,20 @@ test('mid-segment plan changes wait for a safe node instead of snapping or cutti
    const state = createState();
    perceive(state);
    applyPlan(state, planOptions(state)[0]);
-   stepRabbit(state, .07);
-   const position = state.rabbit.position.slice();
+   stepResident(state, .07);
+   const position = state.residents[0].position.slice();
    assert.ok(position.some(value => !Number.isInteger(value)));
-   state.rabbit.known = clone(state.regions);
-   state.rabbit.needs.thirst = .9;
+   state.residents[0].known = clone(state.regions);
+   state.residents[0].needs.thirst = .9;
    assert.ok(applyPlan(state, planOptions(state)[0], 'ai'));
-   assert.deepEqual(state.rabbit.position, position);
-   assert.ok(state.rabbit.pendingPlan);
-   stepRabbit(state, .5);
-   assert.ok(state.rabbit.position.every(Number.isInteger));
+   assert.deepEqual(state.residents[0].position, position);
+   assert.ok(state.residents[0].pendingPlan);
+   stepResident(state, .5);
+   assert.ok(state.residents[0].position.every(Number.isInteger));
    stepWorld(state, .001);
-   assert.equal(state.rabbit.pendingPlan, null);
-   assert.equal(state.rabbit.behavior, 'seekingWater');
-   checkPath(state, [state.rabbit.position.map(Math.round), ...state.rabbit.path]);
+   assert.equal(state.residents[0].pendingPlan, null);
+   assert.equal(state.residents[0].behavior, 'seekingWater');
+   checkPath(state, [state.residents[0].position.map(Math.round), ...state.residents[0].path]);
 });
 
 test('JSON checkpoint resumes simulation identically including needs, memory and exploration', () => {
@@ -141,33 +141,33 @@ test('path movement is stable at 30, 60 and 90 FPS and cannot overshoot', () => 
       const state = createState();
       perceive(state);
       applyPlan(state, planOptions(state)[0]);
-      for (let i = 0; i < fps; i++) stepRabbit(state, 1 / fps);
+      for (let i = 0; i < fps; i++) stepResident(state, 1 / fps);
       return state;
    });
    for (const state of states.slice(1))
       for (let axis = 0; axis < 2; axis++)
-         assert.ok(Math.abs(state.rabbit.position[axis] - states[0].rabbit.position[axis]) < 1e-10);
-   stepRabbit(states[0], 100);
-   assert.equal(states[0].rabbit.status, 'arrived');
-   assert.deepEqual(states[0].rabbit.path, []);
+         assert.ok(Math.abs(state.residents[0].position[axis] - states[0].residents[0].position[axis]) < 1e-10);
+   stepResident(states[0], 100);
+   assert.equal(states[0].residents[0].status, 'arrived');
+   assert.deepEqual(states[0].residents[0].path, []);
 });
 
 test('blocked world produces a bounded stuck state', () => {
    const state = createState();
-   const [x, z] = state.rabbit.position;
+   const [x, z] = state.residents[0].position;
    state.obstacles.push([x - 1, z], [x + 1, z], [x, z - 1], [x, z + 1]);
-   state.rabbit.needs.thirst = .9;
+   state.residents[0].needs.thirst = .9;
    run(state, 10);
-   assert.equal(state.rabbit.behavior, 'stuck');
-   assert.deepEqual(state.rabbit.position, [x, z]);
-   assert.deepEqual(state.rabbit.path, []);
+   assert.equal(state.residents[0].behavior, 'stuck');
+   assert.deepEqual(state.residents[0].position, [x, z]);
+   assert.deepEqual(state.residents[0].path, []);
 });
 
 test('memory remains bounded and model text never becomes a world observation', () => {
    const state = createState();
    for (let i = 0; i < 40; i++) remember(state, 'test', 'event ' + i);
-   assert.equal(state.rabbit.memories.length, 24);
-   assert.equal(state.rabbit.memories[0].id, 17);
+   assert.equal(state.residents[0].memories.length, 24);
+   assert.equal(state.residents[0].memories[0].id, 17);
 });
 
 test('AI planner uses the existing endpoint and accepts only a validated option', async () => {
@@ -183,8 +183,8 @@ test('AI planner uses the existing endpoint and accepts only a validated option'
    await ai.tick();
    assert.equal(input.provider, 'deepseek');
    assert.ok(!input.messages[1].content.includes('north-lake'));
-   assert.equal(state.ai.planner.status, 'ready');
-   assert.ok(state.rabbit.pendingPlan || state.rabbit.memories.some(memory => memory.type === 'plan'));
+   assert.equal(state.residents[0].ai.planner.status, 'ready');
+   assert.ok(state.residents[0].pendingPlan || state.residents[0].memories.some(memory => memory.type === 'plan'));
    ai.dispose();
 });
 
@@ -195,11 +195,11 @@ test('late planner response cannot override a newer decision', async () => {
    const ai = createVillageAI(state, { fetchImpl: () => new Promise(resolve => { finish = resolve; }) });
    const pending = ai.tick();
    applyPlan(state, planOptions(state)[0]);
-   const intent = state.rabbit.intent;
+   const intent = state.residents[0].intent;
    finish(response({ action: 'explore', cell: [0, 0] }));
    await pending;
-   assert.equal(state.ai.planner.status, 'stale');
-   assert.equal(state.rabbit.intent, intent);
+   assert.equal(state.residents[0].ai.planner.status, 'stale');
+   assert.equal(state.residents[0].intent, intent);
    ai.dispose();
 });
 
@@ -208,21 +208,22 @@ test('invalid model plans are rejected while autonomous simulation continues', a
    perceive(state);
    const ai = createVillageAI(state, { fetchImpl: async () => response({ action: 'teleport', target: 'moon' }) });
    await ai.tick();
-   assert.equal(state.ai.planner.status, 'failed');
+   assert.equal(state.residents[0].ai.planner.status, 'failed');
    run(state, 3);
-   assert.notDeepEqual(state.rabbit.position, [3, 15]);
+   assert.notDeepEqual(state.residents[0].position, [3, 15]);
    ai.dispose();
 });
 
 test('dialogue is grounded in snapshot evidence and cannot change simulation state', async () => {
    const state = createState();
    run(state, 2);
-   const before = clone(state.rabbit);
+   const { ai: beforeAI, speech: beforeSpeech, ...before } = clone(state.residents[0]);
    const ai = createVillageAI(state, { fetchImpl: async () => response({ reply: 'A little expedition. Very important waddling business.', evidence: ['behavior'] }) });
    assert.equal(await ai.chat('What are you doing?'), 'A little expedition. Very important waddling business.');
-   assert.deepEqual(state.rabbit, before);
-   assert.equal(state.ai.history.at(-1).source, 'ai');
-   assert.equal(state.ai.dialogue.status, 'ready');
+   const { ai: afterAI, speech: afterSpeech, ...after } = state.residents[0];
+   assert.deepEqual(after, before);
+   assert.equal(state.residents[0].ai.history.at(-1).source, 'ai');
+   assert.equal(state.residents[0].ai.dialogue.status, 'ready');
    ai.dispose();
 });
 
@@ -233,8 +234,8 @@ test('fabricated memory evidence falls back to actual state rather than model te
    const reply = await ai.chat('Any discoveries?');
    assert.ok(!reply.includes('moon'));
    assert.ok(reply.includes('Woodside Cottage'));
-   assert.equal(state.ai.history.at(-1).source, 'state');
-   assert.equal(state.ai.dialogue.status, 'failed');
+   assert.equal(state.residents[0].ai.history.at(-1).source, 'state');
+   assert.equal(state.residents[0].ai.dialogue.status, 'failed');
    ai.dispose();
 });
 
@@ -242,10 +243,10 @@ test('network failure leaves honest state replies and bounded conversation histo
    const state = createState();
    const ai = createVillageAI(state, { fetchImpl: async () => { throw new Error('offline'); } });
    for (let i = 0; i < 10; i++) assert.ok((await ai.chat('How are you?')).includes('Penger'));
-   assert.equal(state.ai.history.length, 12);
-   assert.equal(state.ai.dialogue.status, 'failed');
+   assert.equal(state.residents[0].ai.history.length, 12);
+   assert.equal(state.residents[0].ai.dialogue.status, 'failed');
    run(state, 5);
-   assert.notDeepEqual(state.rabbit.position, [3, 15]);
+   assert.notDeepEqual(state.residents[0].position, [3, 15]);
    ai.dispose();
 });
 
@@ -265,21 +266,38 @@ test('disposing cancels pending requests and prevents late chat from changing st
 });
 
 test('Penger reuses finite wireframe geometry with stable nodes throughout walking and idle', () => {
-   const links = [];
+   const meshes = new Map(), previousClay = globalThis.clay;
+   globalThis.clay = {
+      vertexArray: () => Array(16).fill(0),
+      defineMesh: (name, mesh) => meshes.set(name, mesh),
+   };
    let nodes = 0;
    const node = () => {
       nodes++;
       const value = { add: () => node(), color: () => value, dull: () => value,
          identity: () => value, move: (...args) => { assert.ok(args.every(Number.isFinite)); return value; },
-         turnY: angle => { assert.ok(Number.isFinite(angle)); return value; }, scale: () => value,
-         link: (a, b, radius) => { links.push([a, b, radius]); return value; } };
+         turnY: angle => { assert.ok(Number.isFinite(angle)); return value; }, scale: () => value };
       return value;
    };
-   const penger = createPenger(node(), .05), count = nodes;
-   for (let frame = 0; frame < 12; frame++) penger.update(0, 0, .3, frame < 10, 1 / 60);
-   assert.equal(nodes, count);
-   assert.ok(links.length > 1000);
-   for (const [a, b, radius] of links) assert.ok([...a, ...b, radius].every(Number.isFinite));
+   try {
+      const penger = createPenger(node(), .05), count = nodes, mesh = meshes.get('village-penger');
+      assert.equal(count, 2, 'one parent and one batched model');
+      for (let frame = 0; frame < 12; frame++) {
+         penger.update(0, 0, .3, frame < 10, 1 / 60);
+         assert.ok(mesh.every(Number.isFinite));
+      }
+      assert.equal(nodes, count);
+      assert.equal(meshes.get('village-penger'), mesh);
+      assert.ok(mesh.isTriangles);
+      const idle = mesh.slice();
+      penger.update(0, 0, .3, false, 1 / 60);
+      assert.ok(mesh.every((value, index) => value === idle[index]));
+      const other = createPenger(node(), .05, [1, .7, .2], 'village-pip');
+      other.update(1, 0, 0, true, .1);
+      assert.notEqual(meshes.get('village-pip'), mesh);
+      assert.ok(mesh.every((value, index) => value === idle[index]), 'another resident cannot change this mesh');
+   }
+   finally { globalThis.clay = previousClay; }
 });
 
 test('VR controller hit coordinates select the correct question and reject gaps', () => {
@@ -295,7 +313,7 @@ test('request timeout returns a state reply and releases the dialogue channel', 
       options.signal.addEventListener('abort', () => reject(new Error('timeout')));
    }) });
    assert.ok((await ai.chat('How are you?')).includes('Penger'));
-   assert.equal(state.ai.dialogue.status, 'failed');
+   assert.equal(state.residents[0].ai.dialogue.status, 'failed');
    assert.ok((await ai.chat('Still there?')).includes('Penger'));
    ai.dispose();
 });
