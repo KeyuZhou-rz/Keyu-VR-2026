@@ -104,6 +104,8 @@ async function setup(allResidents = false) {
    Object.assign(input, previous);
    const scene = await load('../js/scenes/village.js', {
       '../render/core/cg.js': cgModule, '../render/core/controllerInput.js': controllers,
+      '../util/input_keyboard.js': exportsModule({ keyIsDown: () => false, keyWentDown: () => false,
+         KEY_W: 87, KEY_A: 65, KEY_S: 83, KEY_D: 68, KEY_V: 86 }),
       '../util/village.js': exportsModule({ ...village, stepWorld() {} }),
       '../util/villageAI.js': exportsModule({ createVillageAI: () => ({ tick() {}, dispose() { disposed.push('ai'); } }) }),
       '../util/pengerView.js': exportsModule({ createPenger: () => ({ update() {} }) }),

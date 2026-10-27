@@ -9,6 +9,12 @@ Open the course app and select **village**. Penger (green), Pip (gold), and Mox 
 - Hold the right grip while pointing at a house, water, or forest to drag it. Release to place it; invalid placements return to the original position.
 - **Save state** downloads the complete JSON checkpoint, including all residents and message sources.
 
+## God view and village view
+
+- **God view** (default): the village is a tabletop board; grip drags places.
+- **Village view**: press **V** (desktop), the **Enter village** button, or **B** in VR. The board scales up so one grid cell is half a meter and you stand on the ground at the nearest free cell. Walk with WASD or the right stick; water, houses and trees block you. Dragging places is disabled here.
+- Penguins within 2.5 cells turn toward you and greet you once (30 s cooldown), remember it, and route around you. The nearest penguin within 3 cells is auto-selected for chat, and its dialogue snapshot says `playerIsHere`. Chatting with a faraway penguin is ignored.
+
 ## Things to try
 
 1. Watch Pip and Mox near the cottage at the start. The cottage has one resting spot, so residents queue and move out of the doorway after resting.
@@ -21,7 +27,7 @@ Simulation, message delivery, queues, and protests run without an AI connection.
 ## Code and checks
 
 - `js/scenes/village.json`: initial world and residents.
-- `js/util/village.js`: BFS, needs, reservations, rest queues, observations, gossip, and disturbance effects.
+- `js/util/village.js`: view mode/player movement, BFS, needs, reservations, rest queues, observations, gossip, and disturbance effects.
 - `js/util/villageAI.js`: one AI session per resident.
 - `js/scenes/village.js` and `js/util/villageUI.js`: rendering, controls, and conversations.
 - `js/util/pengerView.js`: one reusable animated wireframe mesh per resident.

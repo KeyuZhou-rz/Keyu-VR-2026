@@ -23,6 +23,8 @@ function nearRegion(resident, region) {
                      Math.max(region.cell[1] - z, 0, z - region.cell[1] - region.size + 1)) <= resident.sight;
 }
 
+export const playerCell = state => state.player?.mode === 'world' ? state.player.position.map(Math.round) : null;
+
 function reservedCells(resident) {
    return onGrid(resident.position) ? [resident.position] :
       [resident.segmentFrom || resident.position.map(Math.round), ...resident.path.slice(0, 1)];
@@ -34,6 +36,8 @@ function occupiedCells(state, resident) {
       if (other === resident) continue;
       for (const cell of reservedCells(other)) cells.add(key(cell));
    }
+   const visitor = playerCell(state);
+   if (visitor) cells.add(key(visitor));
    return cells;
 }
 
@@ -390,7 +394,7 @@ export function stepResident(state, dt, resident = state.residents[0]) {
       if (onGrid(resident.position) && occupiedCells(state, resident).has(key(next))) {
          resident.waitTime += dt;
          const blocker = state.residents.find(other => other !== resident && reservedCells(other).some(cell => same(cell, next)));
-         const takesDetour = blocker.status !== 'moving' ||
+         const takesDetour = !blocker || blocker.status !== 'moving' ||
             onGrid(blocker.position) && blocker.waitTime > 0 && state.residents.indexOf(resident) < state.residents.indexOf(blocker);
          if (resident.waitTime >= .75 && takesDetour) {
             const extra = occupiedCells(state, resident);
@@ -559,9 +563,74 @@ function updateResident(state, resident, dt) {
    }
 }
 
+const greetings = ['Oh! A visitor, right here on the ground. Welcome to the village!',
+   'Hello there, tall one! You look much smaller from up close.',
+   'A real visitor! Mind the flippers, we waddle fast.'];
+
+export function ensurePlayer(state) {
+   state.player ||= { mode: 'god', position: [state.grid.width / 2 - .5, state.grid.depth / 2 - .5], heading: 0 };
+   return state.player;
+}
+
+export function setViewMode(state, mode) {
+   const player = ensurePlayer(state);
+   if (mode === player.mode) return true;
+   if (mode === 'world') {
+      const taken = new Set(state.residents.flatMap(reservedCells).map(key)), blocked = blockedCells(state);
+      let best = null;
+      for (let x = 0; x < state.grid.width; x++)
+         for (let z = 0; z < state.grid.depth; z++)
+            if (walkable(state, [x, z], blocked) && !taken.has(key([x, z])) &&
+                (!best || distance([x, z], player.position) < distance(best, player.position))) best = [x, z];
+      if (!best) return false;
+      player.position = best;
+   }
+   player.mode = mode;
+   event(state, { type: 'ViewChanged', mode });
+   return true;
+}
+
+export function movePlayer(state, dx, dz) {
+   const player = ensurePlayer(state);
+   if (player.mode !== 'world' || !(dx || dz)) return false;
+   const blocked = blockedCells(state);
+   const open = (x, z) => walkable(state, [Math.round(x), Math.round(z)], blocked);
+   const [x, z] = player.position;
+   const nx = open(x + dx, z) ? x + dx : x, nz = open(nx, z + dz) ? z + dz : z;
+   const moved = nx !== x || nz !== z;
+   player.position = [nx, nz];
+   if (moved) player.heading = Math.atan2(nx - x, nz - z);
+   return moved;
+}
+
+export function nearestResident(state, radius = 3) {
+   const player = state.player;
+   if (player?.mode !== 'world') return null;
+   let best = null, nearest = radius;
+   for (const resident of state.residents) {
+      const d = distance(resident.position, player.position);
+      if (d <= nearest) { best = resident; nearest = d; }
+   }
+   return best;
+}
+
+function visitPlayer(state, resident, dt) {
+   const player = state.player, near = player?.mode === 'world' && distance(resident.position, player.position) <= 2.5;
+   if (!near) { resident.metPlayer = false; return; }
+   if (resident.status !== 'moving' && onGrid(resident.position))
+      resident.heading = Math.atan2(player.position[0] - resident.position[0], player.position[1] - resident.position[1]);
+   if (resident.metPlayer) return;
+   resident.metPlayer = true;
+   if (state.time - (resident.lastGreeting ?? -100) < 30) return;
+   resident.lastGreeting = state.time;
+   remember(state, 'metPlayer', 'The player walked into the village and stood beside me.', null, resident);
+   say(state, resident, greetings[state.residents.indexOf(resident) % greetings.length]);
+}
+
 export function stepWorld(state, dt) {
    state.time += dt;
    for (const resident of state.residents) updateResident(state, resident, dt);
+   for (const resident of state.residents) visitPlayer(state, resident, dt);
    if (state.time >= state.nextSocial) {
       for (let i = 0; i < state.residents.length; i++)
          for (let j = i + 1; j < state.residents.length; j++) exchangeNews(state, state.residents[i], state.residents[j]);
@@ -575,7 +644,9 @@ export function snapshot(state, resident = state.residents[0]) {
       position: resident.position, target: resident.target, destination: resident.path.at(-1) || null,
       surprise: resident.surprise,
       known: resident.known, memories: resident.memories.slice(-10), options: planOptions(state, resident),
-      social: { trustPlayer: resident.trust, waitingFor: resident.waitingFor,
+      social: { trustPlayer: resident.trust, playerIsHere: state.player?.mode === 'world' &&
+            distance(resident.position, state.player.position) <= 3,
+          waitingFor: resident.waitingFor,
          avoiding: Object.keys(resident.avoid), witnessedMoves: resident.disturbances.length },
       nearby: state.residents.filter(other => other !== resident && distance(other.position, resident.position) <= resident.sight)
          .map(other => ({ id: other.id, name: other.name, behavior: other.behavior })) }));

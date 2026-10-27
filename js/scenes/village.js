@@ -1,6 +1,8 @@
 import * as cg from '../render/core/cg.js';
-import { ControllerBeam, buttonState } from '../render/core/controllerInput.js';
-import { stepWorld, isInRegion, canPlaceRegion, moveRegion, selectedResident } from '../util/village.js';
+import { ControllerBeam, buttonState, joyStickState } from '../render/core/controllerInput.js';
+import { stepWorld, isInRegion, canPlaceRegion, moveRegion, selectedResident,
+   ensurePlayer, setViewMode, movePlayer, nearestResident } from '../util/village.js';
+import { keyIsDown, keyWentDown, KEY_W, KEY_A, KEY_S, KEY_D, KEY_V } from '../util/input_keyboard.js';
 import { createVillageAI } from '../util/villageAI.js';
 import { createPenger } from '../util/pengerView.js';
 import { createVillageUI, paintDialogue, questions, questionAt, residentAt, speedAt } from '../util/villageUI.js';
@@ -12,10 +14,16 @@ export const init = async (model, ctx, ctxForever = {}) => {
    const state = await response.json();
    window.villageState = state;
    const brains = new Map(state.residents.map(resident => [resident.id, createVillageAI(state, { resident })]));
-   const ui = createVillageUI(state, { chat: question => brains.get(selectedResident(state).id).chat(question) });
+   const ui = createVillageUI(state, { chat: async question => {
+      const talking = selectedResident(state);
+      if (state.player?.mode === 'world' && nearestResident(state, 3)?.id !== talking.id) return null;
+      return brains.get(talking.id).chat(question);
+   } });
 
-   const board = model.add().move(0, .8, -1.5);
    const { width, depth, cellSize } = state.grid;
+   const player = ensurePlayer(state);
+   const worldScale = .5 / cellSize;                        // in the village a grid cell is half a meter
+   const board = model.add().move(0, .8, -1.5);
    const colors = { water: [.08, .4, .8], house: [.8, .43, .16], forest: [.13, .36, .2] };
    const position = ([x, z]) => [(x - (width - 1) / 2) * cellSize,
                                (z - (depth - 1) / 2) * cellSize];
@@ -65,6 +73,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
       name: board.add('label').info(resident.name).color(resident.color).dull(),
       speech: board.add('label').info(' ').color([1, 1, 1]).dull(),
    }]));
+   let viewButton = false, viewRequest = null;
    let pathVersion = '', drag = null, gripping = false, panelHit = null, hoveredResident = -1;
 
    const canvas = document.createElement('canvas');
@@ -135,12 +144,42 @@ export const init = async (model, ctx, ctxForever = {}) => {
       ui.dispose();
    };
    let previousPaint = '', lastUI = 0;
+   const place = () => {
+      const head = cg.mMultiply(clay.inverseRootMatrix, clay.pose.transform.matrix);
+      if (player.mode === 'god') return board.identity().move(0, .8, -1.5);
+      const [px, pz] = position(player.position);
+      board.identity().move(head[12] - px * worldScale, 0, head[14] - pz * worldScale).scale(worldScale);
+   };
    model.animate(() => {
-      const dt = Math.min(model.deltaTime, .05), resident = selectedResident(state);
+      const dt = Math.min(model.deltaTime, .05);
       const hovered = updatePointer(), inVR = beam.isEnabled;
+      const toggle = inVR && !!buttonState.right[5]?.pressed;
+      if (keyWentDown(KEY_V) || state.viewRequest || toggle && !viewButton) viewRequest = player.mode === 'god' ? 'world' : 'god';
+      viewButton = toggle;
+      state.viewRequest = null;
+      if (viewRequest) {
+         if (viewRequest === 'world') finishDrag(false);
+         setViewMode(state, viewRequest);
+         viewRequest = null;
+      }
+      if (player.mode === 'world') {
+         const head = cg.mMultiply(clay.inverseRootMatrix, clay.pose.transform.matrix);
+         let x = (joyStickState.right.x || 0) + (keyIsDown(KEY_D) ? 1 : 0) - (keyIsDown(KEY_A) ? 1 : 0);
+         let y = (joyStickState.right.y || 0) + (keyIsDown(KEY_S) ? 1 : 0) - (keyIsDown(KEY_W) ? 1 : 0);
+         const length = Math.hypot(x, y);
+         if (length > .2) {
+            const yaw = Math.atan2(head[8], head[10]), c = Math.cos(yaw), s = Math.sin(yaw);
+            const step = 2 * dt / Math.max(1, length);          // 2 cells per second
+            movePlayer(state, (c * x + s * y) * step, (-s * x + c * y) * step);
+         }
+         const near = nearestResident(state, 3);
+         if (near && near.id !== state.selectedResident) state.selectedResident = near.id;
+      }
+      place();
+      const resident = selectedResident(state);
       if (inVR) {
          const grip = !!buttonState.right[1]?.pressed;
-         if (grip && !gripping && !panelHit) {
+         if (grip && !gripping && !panelHit && player.mode === 'god') {
             const cell = pointedCell();
             const region = cell && state.regions.find(region => isInRegion(cell.map(value => Math.round(value)), region));
             if (region) drag = { id: region.id, cell: region.cell.slice(),
@@ -191,7 +230,7 @@ export const init = async (model, ctx, ctxForever = {}) => {
       }
       const paintKey = JSON.stringify([resident.id, resident.behavior, Math.round(resident.needs.thirst * 100),
          Math.round(resident.needs.fatigue * 100), Math.round(resident.trust * 100), resident.reason,
-         resident.ai.history.at(-1), resident.ai.dialogue.status, state.events.at(-1), state.speed, hovered, hoveredResident]);
+         resident.ai.history.at(-1), resident.ai.dialogue.status, state.events.at(-1), state.speed, player.mode, hovered, hoveredResident]);
       if (inVR && paintKey !== previousPaint) {
          previousPaint = paintKey;
          paintDialogue(canvas, state, hovered, hoveredResident);

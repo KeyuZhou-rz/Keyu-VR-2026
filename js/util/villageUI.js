@@ -37,9 +37,9 @@ export function createVillageUI(state, ai) {
       <div data-log role="log" aria-live="polite" style="max-height:150px;overflow:auto;margin:8px 0"></div>
       <div data-questions style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
       <form style="display:flex;gap:6px"><input aria-label="Talk to Penger" placeholder="Ask Penger…" maxlength="300" style="min-width:0;flex:1;padding:7px;border:1px solid #588371;border-radius:6px;background:#24372e;color:white"><button type="submit">Send</button></form>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px"><span data-ai></span><button type="button" data-speed>1× speed</button><button type="button" data-save>Save state</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px"><span data-ai></span><button type="button" data-speed>1× speed</button><button type="button" data-view>Enter village</button><button type="button" data-save>Save state</button></div>
       <div style="margin-top:8px;font-size:12px;color:#acd0b7"><strong>Village news</strong><div data-news style="max-height:70px;overflow:auto"></div></div>
-      <div style="font-size:12px;color:#acd0b7;margin-top:7px">VR: aim with your right hand. Hold grip to move a place; release to place it. Aim at a chat button and press trigger to ask.</div></details>`;
+      <div style="font-size:12px;color:#acd0b7;margin-top:7px">Press V (or the button) to walk into the village: WASD moves, and penguins within a few steps will chat. VR: B toggles views, right stick walks; aim with your right hand. Hold grip to move a place; release to place it. Aim at a chat button and press trigger to ask.</div></details>`;
    for (const button of root.querySelectorAll('button'))
       button.style.cssText = 'cursor:pointer;border:1px solid #588371;border-radius:6px;background:#2b4938;color:white;padding:5px 8px';
    const status = root.querySelector('[data-status]'), reason = root.querySelector('[data-reason]');
@@ -61,6 +61,7 @@ export function createVillageUI(state, ai) {
       await answer;
       if (active) update();
    };
+   root.querySelector('[data-view]').onclick = () => { state.viewRequest = true; };
    root.querySelector('[data-speed]').onclick = () => { state.speed = state.speed === 1 ? 3 : 1; update(); };
    for (const question of questions) {
       const button = document.createElement('button');
@@ -98,6 +99,7 @@ export function createVillageUI(state, ai) {
       info.textContent = aiState.dialogue.status === 'waiting' ? resident.name + ' is thinking…' :
                          aiState.dialogue.status === 'failed' ? 'AI unavailable · State-based reply' : 'Waddling along';
       root.querySelector('[data-speed]').textContent = state.speed + '× speed';
+      root.querySelector('[data-view]').textContent = state.player?.mode === 'world' ? 'Leave village' : 'Enter village';
       for (const button of root.querySelectorAll('[data-resident]')) {
          const selected = button.dataset.resident === resident.id;
          button.setAttribute('aria-pressed', String(selected));
@@ -178,5 +180,6 @@ export function paintDialogue(canvas, state, hovered = -1, hoveredResident = -1)
       context.fillText(questions[i], x + 12, 339);
    }
    context.font = '14px sans-serif';
-   context.fillText('Right grip: move a place. Trigger: select a neighbor or ask a question.', 24, 377);
+   context.fillText(state.player?.mode === 'world' ? 'B: back to god view. Stick: walk. Trigger: ask a nearby penguin.' :
+      'B: walk into the village. Grip: move a place. Trigger: select a neighbor or ask a question.', 24, 377);
 }

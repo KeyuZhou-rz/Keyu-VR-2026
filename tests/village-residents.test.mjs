@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stepWorld, perceive, applyPlan, planOptions, moveRegion,
-   canPlaceRegion, exchangeNews, snapshot, isWalkable } from '../js/util/village.js';
+   canPlaceRegion, exchangeNews, snapshot, isWalkable,
+   movePlayer, setViewMode, nearestResident } from '../js/util/village.js';
 import { createVillageAI } from '../js/util/villageAI.js';
 
 const initial = JSON.parse(await readFile(new URL('../js/scenes/village.json', import.meta.url), 'utf8'));
@@ -199,4 +200,48 @@ test('the real village runs three residents for three simulated minutes without 
    const restored = clone(state);
    for (let i = 0; i < 100; i++) { stepWorld(state, .05); stepWorld(restored, .05); }
    assert.deepEqual(restored, state);
+});
+
+test('player enters the village on a walkable cell, is blocked by terrain, and ignores moves in god view', () => {
+   const state = world();
+   state.player = { mode: 'god', position: [9, 2], heading: 0 };
+   assert.equal(movePlayer(state, 1, 0), false);
+   assert.ok(setViewMode(state, 'world'));
+   assert.equal(state.player.mode, 'world');
+   assert.ok(isWalkable(state, state.player.position.map(Math.round)));
+   state.player.position = [6, 2];
+   for (let i = 0; i < 30; i++) movePlayer(state, .25, 0);
+   assert.ok(Math.round(state.player.position[0]) < 8, 'pond cell must block the player');
+   assert.ok(setViewMode(state, 'god'));
+   assert.equal(state.player.mode, 'god');
+});
+
+test('residents greet a nearby visitor once, face them, and report it to the dialogue snapshot', () => {
+   const state = world();
+   const penger = state.residents[0];
+   penger.position = [4, 4];
+   state.player = { mode: 'world', position: [5.5, 4], heading: 0 };
+   stepWorld(state, .05);
+   assert.equal(penger.memories.at(-1).type, 'metPlayer');
+   assert.match(penger.speech.text, /visitor|Hello|Mind/);
+   const spoken = penger.ai.history.length;
+   stepWorld(state, .05);
+   assert.equal(penger.ai.history.length, spoken, 'greeting is not repeated while the player stays close');
+   assert.equal(snapshot(state, penger).social.playerIsHere, true);
+   assert.equal(nearestResident(state, 3).id, penger.id);
+   state.player.mode = 'god';
+   assert.equal(snapshot(state, penger).social.playerIsHere, false);
+   assert.equal(nearestResident(state, 3), null);
+});
+
+test('residents wait instead of walking through the visitor', () => {
+   const state = world();
+   const penger = state.residents[0];
+   penger.position = [4, 4];
+   penger.path = [[5, 4]];
+   penger.status = 'moving';
+   penger.behavior = 'exploring';
+   state.player = { mode: 'world', position: [5, 4], heading: 0 };
+   for (let i = 0; i < 8; i++) stepWorld(state, .05);
+   assert.ok(penger.position[0] < 4.1, 'penger stays behind the player');
 });

@@ -24,7 +24,8 @@
     "test": "node server.js -env local",
     "start": "node server.js -env local",
     "format": "prettier --write \"**/*.{js,json,md,html,css}\"",
-    "convert": "gltf-import-export"
+    "convert": "gltf-import-export",
+    "test:village": "node --no-warnings --experimental-loader ./tests/esm-loader.mjs --experimental-vm-modules --test tests/village*.test.mjs"
   },
   "repository": {
     "type": "git",
