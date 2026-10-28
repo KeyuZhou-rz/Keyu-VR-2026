@@ -27,6 +27,6 @@ export const init = async model => {
 
        for (let i = 0 ; i < partNames.length ; i++) 
           if (part[partNames[i]])
-             part[partNames[i]].identity().move(.1 * ((i-6)%3), 1.5 + .1 * ((i-6)/3>>0), 0);
+             part[partNames[i]].identity().move(.12 * ((i-8)%4), 1.8 + .12 * ((i-6)/4>>0), 0).turnY(model.time).turnX(model.time/3);
     });
 }
