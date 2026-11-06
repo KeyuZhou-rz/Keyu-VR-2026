@@ -18,6 +18,7 @@ export default () => {
             { name: "SO101_parts", path: "./SO101_parts.js", public: true },
             { name: "bouncing"   , path: "./bouncing.js"   , public: true },
             { name: "widgets"    , path: "./widgets.js"    , public: true },
+            { name: "minime"     , path: "./minime.js"     , public: true },
       ]
    };
 }
