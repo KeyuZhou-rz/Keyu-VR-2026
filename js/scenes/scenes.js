@@ -23,6 +23,7 @@ export default () => {
             { name: "miniature"  , path: "./miniature.js"  , public: true },
             { name: "minime"     , path: "./minime.js"     , public: true },
             { name: "shooting"   , path: "./shooting.js"   , public: true },
+            { name: "boss"       , path: "./boss.js"       , public: true },
       ]
    };
 }
